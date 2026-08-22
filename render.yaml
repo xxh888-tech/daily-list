@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: daily-list
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # 在 Render 控制台的 Environment 页面手动添加：
+      # DEEPSEEK_API_KEY = 你的 DeepSeek Key（用于 AI 复盘功能）

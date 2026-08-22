@@ -1,0 +1,16 @@
+# 含真实 API Key，绝不提交
+config.json
+
+# 个人数据与备份
+data.json
+backups/
+
+# 日志与临时文件
+*.log
+nul
+__pycache__/
+*.pyc
+
+# 系统文件
+.DS_Store
+Thumbs.db

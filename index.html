@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>每日清单 · 让今天有迹可循</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#72a98c" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="每日清单" />
+  <link rel="icon" type="image/png" href="/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">✦</span><span>每日清单</span></div>
+      <div class="sidebar-date">
+        <span class="eyebrow">TODAY'S FOCUS</span>
+        <strong id="sidebarDate">今天</strong>
+        <span id="weekday">星期一</span>
+      </div>
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="today"><span class="nav-icon">☀</span>今日任务 <b id="navCount">0</b></button>
+        <button class="nav-item" data-view="all"><span class="nav-icon">▤</span>全部任务</button>
+        <button class="nav-item" data-view="stats"><span class="nav-icon">◒</span>学习数据统计</button>
+        <button class="nav-item" data-view="goals"><span class="nav-icon">◎</span>目标管理</button>
+      </nav>
+      <div class="side-section">
+        <div class="side-heading"><span>分类</span><button class="icon-button" id="addCategoryBtn" title="添加分类">＋</button></div>
+        <div id="categoryList" class="category-list"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="data-actions">
+          <div class="side-heading"><span>DATA EXPORT</span></div>
+          <div class="data-actions-row">
+            <button id="exportTasksBtn" type="button" title="下载全部任务 CSV 表格">▤ 任务</button>
+            <button id="exportDaysBtn" type="button" title="下载体重、消费、复盘等记录 CSV">♥ 记录</button>
+          </div>
+        </div>
+        <div class="sync-status"><span class="status-dot"></span><span>局域网同步中</span></div>
+        <div class="tip-card"><span class="tip-spark">✦</span><p>一次只专注一件事，完成比完美更重要。</p></div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu-button" id="mobileMenuBtn" type="button" aria-label="打开导航" aria-expanded="false">☰</button>
+        <div class="mobile-brand"><span class="brand-mark">✦</span>每日清单</div>
+        <div class="date-switcher">
+          <button class="circle-button" id="prevDay" aria-label="前一天">‹</button>
+          <button class="date-label" id="datePickerBtn"><span id="dateText">今天</span><span class="calendar-icon">▣</span></button>
+          <input type="date" id="datePicker" aria-label="选择日期" />
+          <button class="circle-button" id="nextDay" aria-label="后一天">›</button>
+          <button class="today-button" id="backToday">回到今天</button>
+        </div>
+        <div class="top-actions"><button class="icon-button" id="remindBtn" title="任务提醒通知" aria-pressed="false">🔔</button><button class="icon-button" id="themeBtn" title="切换外观">◐</button><button class="avatar">我</button></div>
+      </header>
+
+      <section class="hero">
+        <div><p class="greeting" id="greeting">早上好，今天也要元气满满</p><h1><span id="headingDate">今天</span>，<em>安排一点小确幸。</em></h1><span class="special-badge hidden" id="specialBadge">✦ 特殊日子</span></div>
+        <button class="primary-button" id="addTaskBtn"><span>＋</span> 新建任务</button>
+      </section>
+
+      <section class="progress-card">
+        <div class="progress-copy"><span class="progress-label">今日进度</span><strong><span id="doneCount">0</span> <small>/ <span id="totalCount">0</span> 项完成</small></strong></div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-percent" id="progressPercent">0%</span>
+      </section>
+
+      <section class="habit-panel" aria-label="每日习惯打卡">
+        <div class="habit-header"><div><span class="eyebrow">DAILY HABITS</span><h2>今日习惯打卡</h2></div><button class="secondary-button" id="addHabitBtn" type="button">＋ 添加习惯</button></div>
+        <div class="habit-list" id="habitList"></div>
+        <p class="habit-empty hidden" id="habitEmpty">还没有习惯。把每天要做的小事固定下来，例如：背单词、跳绳、阅读。</p>
+      </section>
+
+      <section class="stats-dashboard hidden" id="statsDashboard" aria-label="学习数据统计">
+        <div class="stats-overview" id="statsOverview">
+        <div class="stats-heading">
+          <div><span class="eyebrow">LEARNING INSIGHTS</span><h2>学习数据统计</h2><p>从每天的任务和复盘记录里，看见自己的坚持。</p></div>
+          <div class="stats-heading-actions"><span class="stats-period" id="statsPeriod">本周</span><button class="secondary-button" id="exportReportImageBtn" type="button">📷 周报长图</button><button class="secondary-button growth-report-button" id="generateGrowthReportBtn" type="button">✦ AI生成本周报告</button></div>
+        </div>
+        <div class="stats-cards">
+          <article class="stats-card stats-card-primary"><span class="stats-card-label">今日完成率</span><strong id="statsTodayRate">0%</strong><small id="statsTodayDetail">0 / 0 项任务</small><div class="mini-progress"><i id="statsTodayBar"></i></div></article>
+          <article class="stats-card"><span class="stats-card-label">本周任务完成</span><strong id="statsWeekDone">0 / 0</strong><small id="statsWeekDetail">完成率 0%</small><span class="stats-card-icon">✓</span></article>
+          <article class="stats-card"><span class="stats-card-label">连续学习天数</span><strong id="statsStreak">0 <b>天</b></strong><small id="statsStreakDetail">完成学习类任务即可连续</small><span class="stats-card-icon streak-icon">✦</span></article>
+          <article class="stats-card"><span class="stats-card-label">本周复盘与心情</span><strong id="statsReviewCount">0 天</strong><small id="statsMoodSummary">还没有心情记录</small><span class="mood-dots" id="statsMoodDots"></span></article>
+        </div>
+        <div class="stats-grid">
+          <article class="chart-card trend-card"><div class="chart-header"><div><h3>任务完成率趋势</h3><p>过去 7 天 · 以当前日期为参考</p></div><span class="chart-legend"><i></i>完成率</span></div><div class="trend-chart" id="trendChart"></div><div class="week-list" id="weekList"></div></article>
+          <article class="chart-card time-card"><div class="chart-header"><div><h3>量化投入统计</h3><p>优先使用任务中的实际时长和数量</p></div><span class="chart-total" id="statsTimeTotal">0分钟</span></div><div class="time-chart" id="timeChart"></div><p class="chart-note">旧任务未填写量化字段时，保留原有按完成任务 30 分钟估算的兼容逻辑。</p></article>
+        </div>
+        <section class="growth-report-card hidden" id="growthReportCard" aria-label="AI个人成长报告"><div class="growth-report-header"><div><span class="eyebrow">AI GROWTH REPORT</span><h3>本周个人成长报告</h3><p id="growthReportPeriod">基于最近 7 天统计生成</p></div><span class="generated-source" id="growthReportSource">DeepSeek AI</span></div><div class="growth-report-grid"><article class="growth-report-section growth-report-summary"><h4>本周数据总结</h4><p id="growthSummary"></p></article><article class="growth-report-section"><h4>健康表现分析</h4><p id="growthHealthAnalysis"></p></article><article class="growth-report-section"><h4>学习表现分析</h4><p id="growthLearningAnalysis"></p></article><article class="growth-report-section"><h4>工作表现分析</h4><p id="growthWorkAnalysis"></p></article><article class="growth-report-section growth-report-score"><h4>完成情况评分</h4><strong id="growthScore">0</strong><span> / 100</span><p id="growthScoreReason"></p></article><article class="growth-report-section"><h4>优点总结</h4><ul id="growthStrengths"></ul></article><article class="growth-report-section"><h4>问题分析</h4><ul id="growthProblems"></ul></article><article class="growth-report-section growth-report-suggestions"><h4>下周改进建议</h4><ol id="growthSuggestions"></ol></article></div></section>
+        </div>
+        <div class="stats-detail hidden" id="statsDetail" aria-label="分类统计详情">
+          <div class="detail-heading"><button class="secondary-button" id="statsBackBtn" type="button">‹ 返回统计</button><div><span class="eyebrow">CATEGORY DETAILS</span><h2 id="statsDetailTitle">分类详情</h2><p id="statsDetailSubtitle">查看该分类下各类型、科目或项目的完成情况。</p></div></div>
+          <div class="health-center hidden" id="healthCenter"><div class="health-summary-grid" id="healthSummaryCards"></div></div>
+          <div class="detail-cards" id="detailGenericCards"><article><span id="detailMetricLabel1">完成任务数</span><strong id="detailMetricValue1">0</strong></article><article><span id="detailMetricLabel2">累计时长</span><strong id="detailMetricValue2">0分钟</strong></article><article><span id="detailMetricLabel3">项目数量</span><strong id="detailMetricValue3">0</strong></article></div>
+          <div class="detail-trend chart-card" id="detailTrendCard"><div class="chart-header"><div><h3 id="detailTrendTitle">分类趋势</h3><p id="detailTrendSubtitle">根据已有任务记录统计</p></div><div class="trend-switch"><button type="button" class="active" data-trend="week">周</button><button type="button" data-trend="month">月</button><button type="button" data-trend="year">年</button></div></div><div id="detailTrendChart" class="detail-trend-chart"></div></div>
+          <div class="detail-list" id="statsDetailList"></div>
+        </div>
+      </section>
+
+      <section class="goals-dashboard hidden" id="goalsDashboard" aria-label="目标管理">
+        <div class="goals-heading"><div><span class="eyebrow">GOAL MANAGEMENT</span><h2>目标管理</h2><p>把健康、学习和工作的长期计划，拆成可追踪的进度。</p></div><button class="primary-button" id="addGoalBtn"><span>＋</span> 新建目标</button></div>
+        <section class="chart-card weight-trend-card hidden" id="weightTrendCard" aria-label="体重趋势"><div class="chart-header"><div><h3>体重趋势</h3><p id="weightTrendSub">最近的体重变化</p></div><span class="chart-legend"><i></i>kg · <b id="weightTrendTargetLabel"></b></span></div><div id="weightTrendChart"></div></section>
+        <div class="goals-list" id="goalsList"></div>
+        <div class="goals-empty hidden" id="goalsEmpty"><div class="empty-illustration">◎</div><h3>还没有目标</h3><p>创建一个目标，让每天的任务都有清晰的方向。</p><button class="secondary-button" id="emptyGoalBtn">＋ 创建第一个目标</button></div>
+      </section>
+
+      <section class="daily-record" aria-label="每日生活记录">
+        <div class="record-header"><div><span class="eyebrow">DAILY SNAPSHOT</span><h2>今天的生活记录</h2></div><button class="primary-button record-save" id="saveRecordBtn">保存记录</button></div>
+        <div class="record-grid">
+          <div class="record-special"><label class="special-toggle"><input id="specialDay" type="checkbox" /><span class="switch"></span><span>这是一个特殊日子</span></label><input id="specialLabel" class="record-input" maxlength="30" placeholder="给它取个名字，例如：生日、纪念日" /></div>
+          <label class="record-field"><span>☀ 早餐</span><input id="breakfast" class="record-input" maxlength="80" placeholder="今天早餐吃了什么？" /></label>
+          <label class="record-field"><span>☼ 午餐</span><input id="lunch" class="record-input" maxlength="80" placeholder="今天午餐吃了什么？" /></label>
+          <label class="record-field"><span>☾ 晚餐</span><input id="dinner" class="record-input" maxlength="80" placeholder="今天晚餐吃了什么？" /></label>
+          <label class="record-field"><span>⚖ 体重 <small>kg</small></span><div class="expense-input"><input id="weight" type="number" min="0" step="0.1" placeholder="例如 60.5" /><b>kg</b></div></label>
+          <div class="record-expense-panel"><div class="expense-heading"><span>¥ 今日消费 <strong id="expenseTotal">¥0.00</strong></span><button class="secondary-button add-expense" id="addExpenseBtn" type="button">＋ 添加一笔</button></div><div class="expense-list" id="expenseList"></div><p class="expense-empty" id="expenseEmpty">还没有消费记录，点击右上角添加一笔。</p></div>
+          <div class="record-expense-panel income-panel"><div class="expense-heading"><span>¥ 今日收入 <strong id="incomeTotal">¥0.00</strong></span><button class="secondary-button add-expense" id="addIncomeBtn" type="button">＋ 添加一笔</button></div><div class="expense-list" id="incomeList"></div><p class="expense-empty" id="incomeEmpty">还没有收入记录，点击右上角添加一笔。</p></div>
+          <div class="expense-summary" aria-label="消费统计"><div class="expense-summary-card"><span>本月消费</span><strong id="monthlyExpenseTotal">¥0.00</strong><small id="monthlyExpenseLabel"></small><button class="link-button" id="openExpenseStatsBtn" type="button">查看统计 ›</button></div><div class="expense-summary-card"><span>本年消费</span><strong id="yearlyExpenseTotal">¥0.00</strong><small id="yearlyExpenseLabel"></small></div></div>
+          <div class="expense-summary income-summary" aria-label="收入统计"><div class="expense-summary-card"><span>本月收入</span><strong id="monthlyIncomeTotal">¥0.00</strong><small id="monthlyIncomeLabel"></small><button class="link-button" id="openIncomeStatsBtn" type="button">查看统计 ›</button></div><div class="expense-summary-card"><span>本年收入</span><strong id="yearlyIncomeTotal">¥0.00</strong><small id="yearlyIncomeLabel"></small></div></div>
+        </div>
+      </section>
+
+      <section class="daily-review" aria-label="每日复盘">
+        <div class="record-header"><div><span class="eyebrow">DAILY REVIEW</span><h2>每日复盘</h2></div><div class="review-actions"><button class="secondary-button review-generate" id="generateReviewBtn" type="button">✦ AI 生成复盘</button><button class="primary-button review-save" id="saveReviewBtn">保存复盘</button></div></div>
+        <div class="review-grid">
+          <div class="mood-panel">
+            <span class="review-label">当日心情</span>
+            <div class="mood-list" id="moodList" role="radiogroup" aria-label="选择当日心情">
+              <button type="button" class="mood-option" data-mood="happy" aria-label="开心"><span>😊</span><small>开心</small></button>
+              <button type="button" class="mood-option" data-mood="calm" aria-label="平静"><span>😌</span><small>平静</small></button>
+              <button type="button" class="mood-option" data-mood="okay" aria-label="一般"><span>🙂</span><small>一般</small></button>
+              <button type="button" class="mood-option" data-mood="tired" aria-label="疲惫"><span>😮‍💨</span><small>疲惫</small></button>
+              <button type="button" class="mood-option" data-mood="sad" aria-label="低落"><span>😔</span><small>低落</small></button>
+            </div>
+          </div>
+          <label class="review-field"><span class="review-label">今日亮点</span><textarea id="reviewHighlights" maxlength="500" placeholder="今天有哪些值得记住的时刻？"></textarea></label>
+          <label class="review-field"><span class="review-label">遇到的困难</span><textarea id="reviewChallenges" maxlength="500" placeholder="有什么事情没有按计划进行？"></textarea></label>
+          <label class="review-field"><span class="review-label">感恩 / 开心的事</span><textarea id="reviewGratitude" maxlength="500" placeholder="记录一件让你感到满足或被支持的事"></textarea></label>
+          <label class="review-field"><span class="review-label">明日最重要的事</span><textarea id="reviewTomorrow" maxlength="300" placeholder="为明天留下一个清晰的开始"></textarea></label>
+          <label class="review-field review-summary"><span class="review-label">一句话总结今天</span><textarea id="reviewSummary" maxlength="300" placeholder="用一句话和今天告别"></textarea></label>
+        </div>
+        <div class="generated-review hidden" id="reviewOutput" aria-live="polite"></div>
+      </section>
+
+      <section class="content-area">
+        <div class="toolbar"><div class="filter-tabs"><button class="filter-tab active" data-filter="all">全部 <span id="allCount">0</span></button><button class="filter-tab" data-filter="todo">待完成 <span id="todoCount">0</span></button><button class="filter-tab" data-filter="done">已完成 <span id="completedCount">0</span></button></div><label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="搜索任务..." /></label></div>
+        <div class="task-list" id="taskList"></div>
+        <div class="empty-state hidden" id="emptyState"><div class="empty-illustration">✧</div><h3 id="emptyTitle">今天还没有任务</h3><p id="emptyText">把想做的事情写下来，让计划从第一步开始。</p><button class="secondary-button" id="emptyAddBtn">＋ 添加第一个任务</button></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="modalBackdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-header"><div><span class="eyebrow">PLAN YOUR DAY</span><h2 id="modalTitle">新建任务</h2></div><button class="close-button" id="closeModal">×</button></div><form id="taskForm"><label class="form-field full"><span>任务名称 <i>*</i></span><input id="taskTitle" required maxlength="100" placeholder="例如：完成本周方案初稿" /></label><div class="form-row"><label class="form-field"><span>日期</span><input id="taskDate" type="date" required /></label><label class="form-field"><span>时间 <small>可选</small></span><input id="taskTime" type="time" /></label></div><div class="form-row"><label class="form-field"><span>分类</span><select id="taskCategory"><option>工作</option><option>生活</option><option>学习</option><option>健康</option><option>其他</option></select></label><label class="form-field"><span>类型 / 工作类型 / 学习科目</span><select id="taskSubcategory"></select></label></div><div class="form-row"><label class="form-field"><span>优先级</span><select id="taskPriority"><option value="normal">普通</option><option value="high">重要</option><option value="low">不紧急</option></select></label></div><div id="taskMetricsFields" class="task-metrics-fields"></div><div class="form-row"><label class="form-field full"><span>备注 <small>可选</small></span><input id="taskNote" maxlength="120" placeholder="补充一点说明（可选）" /></label></div><div class="modal-actions"><button type="button" class="secondary-button" id="cancelModal">取消</button><button type="submit" class="primary-button">保存任务</button></div></form></section></div>
+  <div class="modal-backdrop hidden" id="goalModalBackdrop"><section class="modal goal-modal" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle"><div class="modal-header"><div><span class="eyebrow">TRACK YOUR PROGRESS</span><h2 id="goalModalTitle">新建目标</h2></div><button class="close-button" id="closeGoalModal">×</button></div><form id="goalForm"><label class="form-field full"><span>目标名称 <i>*</i></span><input id="goalName" required maxlength="100" placeholder="例如：教资考试、跑步100公里、AI学习50小时" /></label><div class="form-row"><label class="form-field"><span>目标分类</span><select id="goalCategory"><option>健康</option><option>减肥</option><option>学习</option><option>工作</option><option>生活</option></select></label><label class="form-field"><span>目标周期</span><select id="goalPeriod"><option value="week">周目标</option><option value="month">月目标</option><option value="year">年目标</option></select></label></div><div class="form-row"><label class="form-field"><span>统计指标</span><select id="goalMetric"></select></label><label class="form-field"><span id="goalTargetLabel">目标数值</span><div class="goal-value-input"><input id="goalTarget" required type="number" min="0.01" step="0.1" placeholder="例如：100" /><b id="goalUnit">公里</b></div></label></div><div class="form-row hidden" id="goalStartWeightRow"><label class="form-field"><span>起始体重（自动读取）</span><div class="goal-value-input"><input id="goalStartWeight" type="number" min="0.1" step="0.1" placeholder="例如：70" /><b>kg</b></div></label></div><div class="modal-actions"><button type="button" class="secondary-button" id="cancelGoalModal">取消</button><button type="submit" class="primary-button">保存目标</button></div></form></section></div>
+  <div class="modal-backdrop hidden" id="expenseModalBackdrop"><section class="modal expense-modal" role="dialog" aria-modal="true" aria-labelledby="expenseModalTitle"><div class="modal-header"><div><span class="eyebrow">MONEY INSIGHTS</span><h2 id="expenseModalTitle">收支统计</h2></div><button class="close-button" id="closeExpenseModal">×</button></div><div class="expense-stats-body"><div class="expense-month-nav"><button class="circle-button" id="prevExpenseMonth" type="button" aria-label="上个月">‹</button><strong id="expenseMonthLabel"></strong><button class="circle-button" id="nextExpenseMonth" type="button" aria-label="下个月">›</button></div><div class="expense-stat-cards"><article><span>支出合计</span><strong id="statExpenseTotal">¥0</strong></article><article><span>收入合计</span><strong id="statIncomeTotal">¥0</strong></article><article><span>日均支出</span><strong id="statExpenseAvg">¥0</strong></article><article><span>记账天数</span><strong id="statRecordDays">0 天</strong></article></div><div class="chart-card expense-bar-card"><div class="chart-header"><div><h3>每日支出</h3><p>按天统计当月消费金额</p></div><span class="chart-legend"><i></i>当日支出</span></div><div id="expenseBarChart"></div></div><div class="chart-card expense-bar-card"><div class="chart-header"><div><h3>每日收入</h3><p>按天统计当月收入金额</p></div><span class="chart-legend"><i class="income-legend"></i>当日收入</span></div><div id="incomeBarChart"></div></div><div class="chart-card expense-top-card"><h3>单笔最大消费 TOP5</h3><ol id="expenseTopList" class="expense-top-list"></ol></div><div class="chart-card expense-top-card"><h3>单笔最大收入 TOP5</h3><ol id="incomeTopList" class="expense-top-list income-top-list"></ol></div></div></section></div>
+
+  <div class="pomodoro-fab" id="pomodoroFab" role="button" tabindex="0" title="专注番茄钟" aria-label="打开专注计时器">🍅<b id="pomodoroFabBadge" class="hidden"></b></div>
+  <section class="pomodoro-panel hidden" id="pomodoroPanel" aria-label="专注计时器">
+    <div class="pomodoro-head"><strong>🍅 专注番茄钟</strong><button class="close-button" id="pomodoroClose" aria-label="关闭">×</button></div>
+    <div class="pomodoro-display" id="pomodoroDisplay">25:00</div>
+    <label class="form-field pomodoro-task-field"><span>关联任务 <small>可选，完成后自动记录时长</small></span><select id="pomodoroTask"></select></label>
+    <div class="pomodoro-presets">
+      <button type="button" data-minutes="25" class="active">25 分钟</button>
+      <button type="button" data-minutes="45">45 分钟</button>
+      <button type="button" data-minutes="60">60 分钟</button>
+    </div>
+    <div class="pomodoro-controls">
+      <button type="button" class="primary-button" id="pomodoroStart">开始专注</button>
+      <button type="button" class="secondary-button" id="pomodoroReset">重置</button>
+    </div>
+    <p class="pomodoro-note" id="pomodoroNote">选一个任务，专注 25 分钟，完成后自动记录学习/工作时长。</p>
+  </section>
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

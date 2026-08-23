@@ -151,3 +151,146 @@ body.dark .data-actions-row button:hover{border-color:#4e7a63;background:#263b2e
 body.dark .habit-streak{background:#3b3323;color:#e8bd77}
 .pomodoro-display.break{color:#e6a14e}
 body.dark .pomodoro-display.break{color:#f0c27a}
+
+/* ==================== AI 英语教练模块 ==================== */
+body.english-mode .main-content>.hero,body.english-mode .main-content>.progress-card,body.english-mode .main-content>.daily-record,body.english-mode .main-content>.daily-review,body.english-mode .main-content>.content-area,body.english-mode .main-content>.stats-dashboard,body.english-mode .main-content>.goals-dashboard,body.english-mode .main-content>.habit-panel{display:none}
+body.english-mode .nav-item:not([data-view="english"]){opacity:.75}
+.english-dashboard{display:flex;flex-direction:column;gap:18px;padding-bottom:40px}
+.english-heading h2{margin:4px 0 6px;font-size:26px;letter-spacing:-.5px}.english-heading p{margin:0;font-size:13px;color:var(--muted)}
+.eng-tabs{display:flex;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;overflow-x:auto}
+.eng-tab{flex-shrink:0;height:38px;padding:0 16px;border-radius:10px;background:none;font-size:13px;font-weight:600;color:#72798c;display:flex;align-items:center;gap:5px}
+.eng-tab span{font:600 11px 'DM Sans';color:var(--primary);background:#f0efff;padding:2px 7px;border-radius:8px}
+.eng-tab.active{background:#f0efff;color:var(--primary)}
+.eng-panel{display:flex;flex-direction:column;gap:14px}
+.eng-plan-controls .eng-plan-form{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.eng-plan-form .form-field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.eng-plan-form select,.eng-plan-form input{height:42px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft);padding:0 13px;font-size:13px;color:var(--text);outline:none}
+.eng-focus-field{flex:1;min-width:200px}
+.eng-plan-form input:focus,.eng-plan-form select:focus{border-color:var(--primary)}
+.eng-plan-tip{margin:12px 0 0;font-size:12px;line-height:1.7;color:#ae8954;background:#fbf5eb;border-radius:10px;padding:10px 13px}
+.eng-plan-meta{flex-direction:row!important;align-items:center;justify-content:space-between;margin:0}
+.eng-plan-meta h3{margin:0 0 3px;font-size:17px}.eng-plan-meta p{margin:0;font-size:12px;color:var(--muted)}
+.generated-source{font:700 11px 'DM Sans';color:var(--primary);background:#f0efff;padding:5px 11px;border-radius:9px;white-space:nowrap}
+.eng-word-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.eng-word-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow);transition:border-color .2s}
+.eng-word-card.reviewed{opacity:.72;border-style:dashed}
+.eng-word-head{display:flex;align-items:center;gap:9px}
+.eng-word-head strong{font-size:19px;font-family:'DM Sans','Noto Sans SC';letter-spacing:-.3px}
+.eng-phonetic{font-size:12px;color:var(--muted);font-family:'DM Sans'}
+.eng-speak-btn{margin-left:auto;width:32px;height:32px;font-size:15px;background:#f0efff;color:var(--primary);border-radius:9px}
+.eng-speak-btn:hover{background:var(--primary);color:#fff}
+.eng-meaning{margin:0;font-size:13.5px;font-weight:600;color:var(--text)}
+.eng-example{margin:0;font-size:13px;line-height:1.65;color:#5a6b64;font-style:italic}
+.eng-example-cn{margin:0;font-size:12px;line-height:1.6;color:var(--muted)}
+.eng-word-actions{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:8px}
+.eng-review-btn{height:34px;padding:0 14px;border-radius:9px;font-size:12.5px;font-weight:600;border:1px solid var(--line)}
+.eng-review-btn.know{color:var(--green);background:#eef8f1}.eng-review-btn.wrong{color:var(--red);background:#fdf1f0}
+.eng-review-btn:hover:not(:disabled){filter:brightness(.95)}
+.eng-review-btn:disabled{opacity:.45;cursor:default}
+.eng-review-state{margin-left:auto;font-size:11px;color:var(--muted)}
+.eng-sentence-card blockquote,.eng-topic-card .eng-sentence{margin:10px 0 8px;font-size:19px;line-height:1.55;font-weight:600;color:var(--text);font-family:'DM Sans','Noto Sans SC'}
+.eng-points{margin:10px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.eng-points li{font-size:12.5px;color:var(--muted);line-height:1.6}
+.eng-scene{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.eng-topic-card .primary-button{margin-top:10px;align-self:flex-start}
+.eng-word-toolbar{padding:0}
+.eng-word-list,.eng-wrong-list{display:flex;flex-direction:column;gap:10px}
+.eng-word-row,.eng-wrong-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 15px}
+.eng-word-row.mastered,.eng-wrong-row.mastered{opacity:.62}
+.eng-word-row-main{flex:1;min-width:0}
+.eng-word-row-main strong{font-size:15.5px;font-family:'DM Sans','Noto Sans SC'}
+.eng-word-row-main p{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eng-word-row-side{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.eng-word-row-side small{font-size:11px;color:var(--muted);white-space:nowrap}
+.eng-delete-btn{width:28px;height:28px;border-radius:8px;background:none;color:#c2c6d0;font-size:16px}
+.eng-delete-btn:hover{background:#fdf1f0;color:var(--red)}
+.eng-wrong-action{height:32px;padding:0 12px;font-size:12px}
+.tag{font:600 11px 'DM Sans','Noto Sans SC';padding:4px 9px;border-radius:8px;background:#f0efff;color:#7767e9;white-space:nowrap}
+.eng-empty{text-align:center;font-size:13px;color:var(--muted);padding:36px 0}
+.eng-speak-card{display:flex;flex-direction:column;gap:12px;margin:0}
+.eng-speak-head{display:flex;gap:10px;align-items:flex-end}
+.eng-topic-field{flex:1;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.eng-topic-field input{height:40px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft);padding:0 12px;font-size:13px;color:var(--text);outline:none}
+.eng-topic-field input:focus{border-color:var(--primary)}
+#engMicBtn.recording{background:#fdf1f0;color:var(--red);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.55}}
+.eng-chat{min-height:260px;max-height:430px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:6px 4px;background:var(--surface-soft);border-radius:14px;border:1px solid var(--line)}
+.eng-chat-empty{margin:auto;text-align:center;padding:30px;color:var(--muted);font-size:13px;line-height:1.8}
+.eng-chat-empty b{display:block;font-size:15px;color:var(--text);margin-bottom:6px}
+.eng-bubble{max-width:78%;padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.65;word-break:break-word}
+.eng-bubble.user{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:4px}
+.eng-bubble.coach{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px;position:relative}
+.eng-replay-btn{position:absolute;top:-9px;right:-9px;width:24px;height:24px;border-radius:50%;background:#f0efff;color:var(--primary);font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.eng-correction{margin-top:8px;padding:8px 10px;background:#fbf5eb;border-radius:9px;font-size:12px;line-height:1.6;color:#ae8954}
+.eng-correction span{display:block;color:#a4a9b8;margin-top:2px}
+.eng-mic-hint{margin:0;text-align:center;font-size:12px;color:var(--red)}
+.eng-chat-input-row{display:flex;gap:10px}
+.eng-chat-input-row input{flex:1;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);padding:0 14px;font-size:13.5px;color:var(--text);outline:none}
+.eng-chat-input-row input:focus{border-color:var(--primary)}
+.eng-trend-card{margin:0}
+.eng-trend-bars{display:flex;align-items:flex-end;gap:10px;height:170px;padding:8px 4px 0}
+.eng-trend-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+.eng-trend-stack{flex:1;width:100%;max-width:44px;display:flex;flex-direction:column-reverse;justify-content:flex-start;border-radius:8px;overflow:hidden;background:var(--surface-soft)}
+.eng-trend-stack i{display:block;width:100%}
+.t-new{background:#7767e9}.t-review{background:var(--primary)}.t-speaking{background:var(--yellow)}.t-empty{height:4px;background:var(--line);border-radius:4px}
+.eng-trend-col span{font:600 10.5px 'DM Sans';color:var(--muted)}
+.eng-trend-legend{display:flex;gap:16px;padding:10px 4px 0;font-size:11.5px;color:var(--muted)}
+.eng-trend-legend span{display:flex;align-items:center;gap:6px}
+.eng-trend-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+@media (max-width:720px){
+  .english-dashboard{margin:30px 20px 50px}
+  .english-heading h2{font-size:22px}
+  .english-heading p{font-size:12.5px}
+  .eng-tabs{padding:5px}
+  .eng-tab{padding:0 13px;font-size:12.5px}
+  .eng-word-grid{grid-template-columns:1fr}
+  .eng-plan-controls .eng-plan-form{flex-direction:column;align-items:stretch}
+  .eng-plan-form .form-field{width:100%}
+  .eng-plan-form select,.eng-plan-form input,.eng-plan-form .primary-button{width:100%}
+  .eng-word-row-side small{display:none}
+  .eng-bubble{max-width:88%}
+}
+body.dark .english-dashboard .chart-card,body.dark .eng-word-card{background:#2a2f33;border-color:#3a4045}
+body.dark .eng-tab.active,body.dark .eng-speak-btn,body.dark .generated-source{background:#333a40;color:#9fd3b6}
+body.dark .eng-bubble.coach{background:#2a2f33;border-color:#3a4045}
+body.dark .eng-chat{background:#23282c}
+
+/* 错词测验 & 今日完成度 */
+.eng-wrong-toolbar{padding:0;margin-bottom:10px}
+.eng-plan-meta-side{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.eng-complete-btn{height:32px;padding:0 13px;border-radius:9px;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--text);cursor:pointer;white-space:nowrap}
+.eng-complete-btn:hover{border-color:var(--green)}
+.eng-complete-btn.done{border-color:var(--green);color:var(--green);background:#eef8f1}
+.eng-quiz-card{display:flex;flex-direction:column;gap:12px}
+.eng-quiz-meaning{font-size:20px;font-weight:600;line-height:1.6;text-align:center;padding:18px 10px;background:#fbf5eb;border-radius:12px;font-family:'Noto Sans SC'}
+.eng-quiz-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.eng-quiz-option{height:46px;border-radius:11px;border:1px solid var(--line);background:#fff;font-size:15px;font-weight:600;font-family:'DM Sans','Noto Sans SC';cursor:pointer;transition:.15s}
+.eng-quiz-option:hover:not(:disabled){border-color:var(--primary);background:#fdf9f2}
+.eng-quiz-option.correct{border-color:var(--green);background:#eef8f1;color:var(--green)}
+.eng-quiz-option.incorrect{border-color:var(--red);background:#fdf1f0;color:var(--red)}
+.eng-quiz-option:disabled{cursor:default;opacity:.85}
+.eng-quiz-feedback{text-align:center;font-size:13px;color:var(--muted)}
+.eng-quiz-feedback.wrong{color:var(--red)}
+.eng-quiz-result{text-align:center;padding:14px 0;display:flex;flex-direction:column;gap:8px;align-items:center}
+.eng-quiz-actions{display:flex;gap:10px;margin-top:6px}
+
+/* TTS 设置 & 听音拼写 & 句子收藏 */
+.eng-tts-row{display:flex;gap:10px;margin-top:10px}
+.eng-tts-row .form-field{flex:1;min-width:0}
+.eng-tts-row select{width:100%}
+.eng-fav-btn.active{color:#e0526e}
+.eng-spell-play{text-align:center;padding:6px 0}
+.eng-spell-play .icon-button{font-size:15px;height:auto;padding:10px 16px;border-radius:11px;background:#fbf5eb}
+.eng-spell-row{display:flex;gap:10px}
+.eng-spell-input{flex:1;height:46px;border-radius:11px;border:1px solid var(--line);padding:0 14px;font-size:16px;font-family:'DM Sans','Noto Sans SC';background:#fff;color:var(--text)}
+.eng-spell-input:focus{outline:none;border-color:var(--primary)}
+
+/* 复习直达 & 批量导入 & 英语周报 */
+.eng-due-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fdf6e9;border:1px solid #ecd9b0;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#8a6d3b}
+.eng-weekly-card{margin-bottom:12px}
+.eng-weekly-box{min-height:20px}
+.eng-weekly-report{display:flex;flex-direction:column;gap:8px;font-size:13.5px;line-height:1.7}
+.eng-weekly-summary{color:var(--text)}
+.eng-weekly-advice{color:var(--muted);font-size:12.5px}
+.eng-weekly-cheer{color:var(--primary);font-weight:600}
+.eng-weekly-report small{color:var(--muted);font-size:11.5px;border-top:1px dashed var(--line);padding-top:6px}

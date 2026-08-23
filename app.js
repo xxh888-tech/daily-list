@@ -1,4 +1,4 @@
-const state = { tasks: [], dailyRecords: {}, goals: [], habits: [], statsData: null, growthReport: null, growthReports: {}, selectedDate: formatDate(new Date()), filter: 'all', query: '', editingId: null, editingGoalId: null, category: 'all', generatedReview: null, view: 'today', statsCategory: null, statsType: null, statsTrendMode: 'week' };
+const state = { tasks: [], dailyRecords: {}, goals: [], habits: [], statsData: null, growthReport: null, growthReports: {}, selectedDate: formatDate(new Date()), filter: 'all', query: '', editingId: null, editingGoalId: null, category: 'all', generatedReview: null, view: 'today', statsCategory: null, statsType: null, statsTrendMode: 'week', english: null, engTab: 'plan', engWordQuery: '', engSessionId: null, engMessages: [], engQuiz: null };
 const AI_REVIEW_ENDPOINT = '/api/ai/review';
 const categories = ['工作', '生活', '学习', '健康', '其他'];
 const subcategories = { 工作:['项目开发','日常工作','其他','未分类'], 生活:['家务','饮食','阅读','其他','未分类'], 学习:['教资科目一','教资科目二','教资科目三','英语单词','英语听力','编程学习','AI学习','其他','未分类'], 健康:['跑步','跳绳','篮球','健身','力量训练','其他','未分类'], 其他:['未分类','其他'] };
@@ -166,7 +166,15 @@ async function addGoal(payload) { state.goals.push(await request('/api/goals', {
 async function updateGoal(id, payload) { const updated = await request(`/api/goals/${id}`, {method:'PUT', body:JSON.stringify(payload)}); const index = state.goals.findIndex(goal => goal.id === id); if (index >= 0) state.goals[index] = updated; render(); }
 async function deleteGoal(id) { await request(`/api/goals/${id}`, {method:'DELETE'}); state.goals = state.goals.filter(goal => goal.id !== id); render(); toast('目标已删除'); }
 async function load() {
-  try { const data = await request('/api/state'); state.tasks = data.tasks || []; state.dailyRecords = data.dailyRecords || {}; state.goals = Array.isArray(data.goals) ? data.goals : []; state.habits = Array.isArray(data.habits) ? data.habits : []; const serverReports = data.growthReports && typeof data.growthReports === 'object' && !Array.isArray(data.growthReports) ? data.growthReports : {}; state.growthReports = {...readSavedGrowthReports(), ...serverReports}; saveGrowthReports(); await refreshStats(); render(); }
+  try { const data = await request('/api/state'); state.tasks = data.tasks || []; state.dailyRecords = data.dailyRecords || {}; state.goals = Array.isArray(data.goals) ? data.goals : []; state.habits = Array.isArray(data.habits) ? data.habits : []; const serverReports = data.growthReports && typeof data.growthReports === 'object' && !Array.isArray(data.growthReports) ? data.growthReports : {}; state.growthReports = {...readSavedGrowthReports(), ...serverReports}; saveGrowthReports(); state.english = data.english && typeof data.english === 'object' ? data.english : {}; await refreshStats();
+  try { const sess = await request('/api/english/sessions'); const latest = (sess.sessions || [])[0];
+    if (latest && Array.isArray(latest.messages) && latest.messages.length && !state.engSessionId) {
+      state.engSessionId = latest.id;
+      state.engMessages = latest.messages.map(m => ({role: m.role === 'user' ? 'user' : 'coach', content: m.content || '', corrections: m.corrections || []}));
+      const topicInput = $('engTopic');
+      if (topicInput && !topicInput.value && latest.topic && latest.topic !== 'Free talk') topicInput.value = latest.topic;
+    } } catch {}
+  render(); }
   catch (error) { toast('无法连接到本地服务，请确认 server.py 正在运行'); console.error(error); }
 }
 async function addTask(payload) { state.tasks.push(await request('/api/tasks', {method:'POST', body:JSON.stringify(payload)})); await refreshStats(); render(); }
@@ -189,8 +197,10 @@ function render() {
   $('progressFill').style.width = todayTasks.length ? `${done/todayTasks.length*100}%` : '0%';
   $('statsDashboard').classList.toggle('hidden', state.view !== 'stats');
   $('goalsDashboard').classList.toggle('hidden', state.view !== 'goals');
+  $('englishDashboard').classList.toggle('hidden', state.view !== 'english');
   document.body.classList.toggle('stats-mode', state.view === 'stats');
   document.body.classList.toggle('goals-mode', state.view === 'goals');
+  document.body.classList.toggle('english-mode', state.view === 'english');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === state.view));
   renderStats();
   renderGoals();
@@ -199,6 +209,7 @@ function render() {
   renderCategories();
   renderDailyRecord();
   renderDailyReview();
+  if (state.view === 'english') renderEnglish();
   let visible = todayTasks.filter(t => state.category === 'all' || t.category === state.category);
   if (state.filter === 'todo') visible = visible.filter(t => !t.done);
   if (state.filter === 'done') visible = visible.filter(t => t.done);
@@ -765,6 +776,7 @@ document.querySelector('[data-view="stats"]').onclick = () => { state.view = 'st
 document.querySelector('[data-view="today"]').onclick = () => { state.view = 'today'; render(); };
 document.querySelector('[data-view="all"]').onclick = () => { state.view = 'today'; state.filter = 'all'; state.category = 'all'; render(); };
 document.querySelector('[data-view="goals"]').onclick = () => { state.view = 'goals'; state.category = 'all'; state.statsCategory = null; state.statsType = null; render(); };
+document.querySelector('[data-view="english"]').onclick = () => { state.view = 'english'; state.category = 'all'; render(); };
 const hour=new Date().getHours(); $('greeting').textContent = hour<6?'夜深了，明天也会是崭新的一天':hour<12?'早上好，今天也要元气满满':hour<18?'下午好，保持专注，稳稳推进':'晚上好，辛苦了，记得好好休息';
 updateRemindButton();
 if ('serviceWorker' in navigator && window.isSecureContext) { navigator.serviceWorker.register('/sw.js').catch(() => {}); }
@@ -774,3 +786,468 @@ pomodoroTimerId = setInterval(tickPomodoro, 500);
 checkTaskReminders();
 setInterval(checkTaskReminders, 30000);
 load();
+/* ==================== AI 英语教练模块 ==================== */
+function engStore() {
+  const store = state.english && typeof state.english === 'object' ? state.english : {};
+  if (!store.plans || typeof store.plans !== 'object') store.plans = {};
+  if (!store.words || typeof store.words !== 'object') store.words = {};
+  if (!store.wrongWords || typeof store.wrongWords !== 'object') store.wrongWords = {};
+  if (!store.log || typeof store.log !== 'object') store.log = {};
+  if (!Array.isArray(store.sessions)) store.sessions = [];
+  if (!store.favorites || typeof store.favorites !== 'object') store.favorites = {};
+  return store;
+}
+function engTtsPrefs() { try { return {lang: localStorage.getItem('engVoiceLang') || 'en-US', rate: Number(localStorage.getItem('engRate')) || 0.92}; } catch (error) { return {lang:'en-US', rate:0.92}; } }
+function engSpeak(text, lang = 'en-US') {
+  if (!('speechSynthesis' in window) || !text) { toast('当前浏览器不支持语音朗读'); return; }
+  speechSynthesis.cancel();
+  const prefs = engTtsPrefs();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang === 'en-US' ? prefs.lang : lang; utterance.rate = prefs.rate;
+  speechSynthesis.speak(utterance);
+}
+function engLevelLabel(level) { return {cet4:'四级',cet6:'六级',kaoyan:'考研',ielts:'雅思',daily:'日常'}[level] || '四级'; }
+function engReviewedToday(entry) { const today = formatDate(new Date()); return Boolean(entry && entry.lastReviewAt && String(entry.lastReviewAt).slice(0,10) === today); }
+function engActiveWrongCount() { return Object.values(engStore().wrongWords).filter(item => item && !item.mastered).length; }
+function engTodayDueCount() {
+  const today = formatDate(new Date());
+  const store = engStore();
+  const wrongKeys = new Set(Object.keys(store.wrongWords).filter(k => store.wrongWords[k] && !store.wrongWords[k].mastered));
+  return Object.entries(store.words).filter(([k, w]) => w && w.status !== 'mastered' && String(w.nextReviewAt || '').slice(0,10) <= today && !wrongKeys.has(k)).length;
+}
+
+function renderEnglish() {
+  $('engNavCount').textContent = engActiveWrongCount() + engTodayDueCount();
+  const store = engStore();
+  $('engWordTotal').textContent = Object.keys(store.words).length;
+  $('engWrongTotal').textContent = engActiveWrongCount();
+  $('engFavTotal').textContent = Object.keys(store.favorites).length;
+  document.querySelectorAll('.eng-tab').forEach(el => el.classList.toggle('active', el.dataset.engTab === state.engTab));
+  ['plan','words','wrong','speaking','favs','stats'].forEach(tab => $(`engPanel${tab[0].toUpperCase()}${tab.slice(1)}`).classList.toggle('hidden', state.engTab !== tab));
+  renderEngPlan(); renderEngWords(); renderEngWrong(); renderEngChat(); renderEngFavs(); renderEngStats();
+}
+
+function renderEngPlan() {
+  const date = state.selectedDate;
+  const plan = engStore().plans[date];
+  const content = $('engPlanContent');
+  if (!plan) { content.innerHTML = `<div class="empty-state"><div class="empty-illustration">✎</div><h3>${dateText(date)}还没有英语任务</h3><p>选择目标水平，点击上方按钮，让 AI 为你定制今天的单词、句子和口语话题。</p></div>`; $('engPlanTip').classList.add('hidden'); const dueBar = $('engDueBar'); dueBar.classList.add('hidden'); return; }
+  const dueCount = engTodayDueCount();
+  const dueBar = $('engDueBar');
+  if (dueCount > 0) {
+    dueBar.classList.remove('hidden');
+    dueBar.innerHTML = `<span>📅 有 <b>${dueCount}</b> 个单词今天该复习了</span><button class="primary-button" id="engDueReviewBtn" type="button">开始复习</button>`;
+    $('engDueReviewBtn').onclick = () => engStartQuiz('choice', engDueItems());
+  } else { dueBar.classList.add('hidden'); dueBar.innerHTML = ''; }
+  const wordsHtml = (plan.words || []).map(entry => {
+    const record = engStore().words[(entry.word || '').toLowerCase()] || {};
+    const reviewed = engReviewedToday(record);
+    const dueToday = !reviewed && record.nextReviewAt && String(record.nextReviewAt).slice(0,10) <= date;
+    return `<article class="eng-word-card ${reviewed ? 'reviewed' : ''}">
+      <div class="eng-word-head"><strong>${escapeHtml(entry.word)}</strong><span class="eng-phonetic">${escapeHtml(entry.phonetic || '')}</span>
+        <button class="icon-button eng-speak-btn" data-say="${escapeHtml(entry.word)}" title="朗读单词">🔊</button></div>
+      <p class="eng-meaning">${escapeHtml(entry.meaning || '')}</p>
+      ${entry.example ? `<p class="eng-example">${escapeHtml(entry.example)}</p><p class="eng-example-cn">${escapeHtml(entry.exampleTranslation || '')}</p>` : ''}
+      <div class="eng-word-actions">
+        <button type="button" class="eng-review-btn know" data-review="correct" data-word="${escapeHtml(entry.word)}" ${reviewed ? 'disabled' : ''}>✓ 认识</button>
+        <button type="button" class="eng-review-btn wrong" data-review="wrong" data-word="${escapeHtml(entry.word)}" ${reviewed ? 'disabled' : ''}>✗ 不认识</button>
+        <span class="eng-review-state">${reviewed ? (Number(record.wrongCount||0) > Number(record.correctCount||0) ? '今天已复习 · 答错过' : '今天已复习 ✓') : dueToday ? `📅 到期复习 · 已学 ${record.reviewCount || 0} 次` : `已学 ${record.reviewCount || 0} 次`}</span>
+      </div></article>`;
+  }).join('');
+  const sentence = plan.sentence || {};
+  const speaking = plan.speaking || {};
+  const sentenceFaved = Boolean((sentence.text || '') && Object.values(engStore().favorites || {}).find(f => f.text === sentence.text));
+  const completeControl = date === formatDate(new Date())
+    ? `<button class="eng-complete-btn ${plan.completed ? 'done' : ''}" id="engCompleteBtn" type="button">${plan.completed ? '✓ 今日已完成' : '标记今日完成'}</button>`
+    : (plan.completed ? '<span class="generated-source">✓ 已完成</span>' : '');
+  content.innerHTML = `
+    <section class="chart-card eng-plan-meta"><div><h3>今日任务单 · ${engLevelLabel(plan.level)}</h3><p>6个核心单词 · 1个长难句 · 1个口语话题</p></div><div class="eng-plan-meta-side"><span class="generated-source">${plan.source === 'ai' ? 'DeepSeek AI 生成' : '本地词库生成'}</span>${completeControl}</div></section>
+    <div class="eng-word-grid">${wordsHtml}</div>
+    <section class="chart-card eng-sentence-card"><div class="chart-header"><div><span class="eyebrow">DAILY SENTENCE</span><h3>每日一句</h3></div><div class="eng-plan-meta-side"><button class="icon-button eng-fav-btn ${sentenceFaved ? 'active' : ''}" data-fav="${escapeHtml(sentence.text || '')}" title="${sentenceFaved ? '取消收藏' : '收藏句子'}">${sentenceFaved ? '❤' : '♡'}</button><button class="icon-button eng-speak-btn" data-say="${escapeHtml(sentence.text || '')}" title="朗读句子">🔊</button></div></div>
+      <blockquote class="eng-sentence">${escapeHtml(sentence.text || '')}</blockquote>
+      <p class="eng-example-cn">${escapeHtml(sentence.translation || '')}</p>
+      ${(sentence.points || []).length ? `<ul class="eng-points">${sentence.points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}</section>
+    <section class="chart-card eng-topic-card"><div class="chart-header"><div><span class="eyebrow">SPEAKING PRACTICE</span><h3>今日口语话题</h3><p class="eng-scene">${escapeHtml(speaking.scene || '')}</p></div></div>
+      <p class="eng-sentence">${escapeHtml(speaking.topic || '')}</p>
+      ${speaking.starter ? `<p class="eng-example">开场参考：${escapeHtml(speaking.starter)}</p>` : ''}
+      <button class="primary-button" id="engGoSpeakingBtn">💬 开始口语练习</button></section>`;
+  $('engPlanTip').textContent = plan.tip || '';
+  $('engPlanTip').classList.toggle('hidden', !plan.tip);
+  $('engGoSpeakingBtn').onclick = () => { $('engTopic').value = (engStore().plans[state.selectedDate]?.speaking?.topic) || ''; state.engTab = 'speaking'; renderEnglish(); };
+  const completeBtn = $('engCompleteBtn');
+  if (completeBtn) completeBtn.onclick = engTogglePlanComplete;
+}
+
+async function engTogglePlanComplete() {
+  const date = state.selectedDate;
+  const plan = engStore().plans[date];
+  if (!plan) return;
+  const next = !plan.completed;
+  try {
+    await request('/api/english/plan/complete', {method:'POST', body:JSON.stringify({date, completed: next})});
+    plan.completed = next;
+    const log = engStore().log;
+    if (!log[date]) log[date] = {newWords:0, correct:0, wrong:0, speakingMessages:0};
+    log[date].planCompleted = Math.max(0, Number(log[date].planCompleted || 0) + (next ? 1 : -1));
+    renderEnglish();
+    toast(next ? '今日英语任务已完成 ✓ 保持打卡！' : '已取消完成标记');
+  } catch (error) { toast(error.message); }
+}
+
+async function engReview(word, result) {
+  try {
+    const data = await request('/api/english/words/review', {method:'POST', body:JSON.stringify({word, result})});
+    const store = engStore(); const key = word.toLowerCase();
+    if (data.word) store.words[key] = data.word;
+    if (result === 'correct') delete store.wrongWords[key];
+    else if (!store.wrongWords[key]) store.wrongWords[key] = {word, meaning:(store.words[key]||{}).meaning||'', wrongCount:1};
+    renderEnglish(); toast(result === 'correct' ? `「${word}」记入复习记录` : `「${word}」已加入错词本`);
+  } catch (error) { toast(error.message); }
+}
+
+function renderEngWords() {
+  const store = engStore();
+  const query = state.engWordQuery.trim().toLowerCase();
+  const entries = Object.values(store.words)
+    .filter(item => !query || `${item.word} ${item.meaning}`.toLowerCase().includes(query))
+    .sort((a,b) => (a.status === b.status ? (b.addedAt||'').localeCompare(a.addedAt||'') : a.status === 'mastered' ? 1 : -1));
+  $('engWordsEmpty').classList.toggle('hidden', entries.length > 0);
+  $('engWordList').innerHTML = entries.map(item => `<article class="eng-word-row ${item.status === 'mastered' ? 'mastered' : ''}">
+    <button class="icon-button eng-speak-btn" data-say="${escapeHtml(item.word)}">🔊</button>
+    <div class="eng-word-row-main"><strong>${escapeHtml(item.word)}</strong><span class="eng-phonetic">${escapeHtml(item.phonetic || '')}</span>
+      <p>${escapeHtml(item.meaning || '')}${item.example ? ` <small>· ${escapeHtml(item.example)}</small>` : ''}</p></div>
+    <div class="eng-word-row-side"><span class="tag 学习">${item.status === 'mastered' ? '已掌握' : '学习中'}</span>
+      <small>对 ${item.correctCount || 0} / 错 ${item.wrongCount || 0}${item.nextReviewAt ? ` · ${item.nextReviewAt <= formatDate(new Date()) ? '今日该复习' : `下次 ${item.nextReviewAt.slice(5).replace('-', '/')}`}` : ''}</small>
+      <button class="eng-delete-btn" data-del-word="${escapeHtml(item.word)}" title="删除">×</button></div></article>`).join('');
+}
+
+function renderEngWrong() {
+  const store = engStore();
+  const quizActive = Boolean(state.engQuiz);
+  $('engQuizBtn').classList.toggle('hidden', quizActive);
+  $('engSpellBtn').classList.toggle('hidden', quizActive);
+  $('engQuizExit').classList.toggle('hidden', !quizActive);
+  if (quizActive) { renderEngQuiz(); return; }
+  const items = Object.values(store.wrongWords).sort((a,b) => Number(b.wrongCount||0) - Number(a.wrongCount||0));
+  $('engWrongEmpty').classList.toggle('hidden', items.length > 0);
+  $('engWrongList').innerHTML = items.map(item => `<article class="eng-wrong-row ${item.mastered ? 'mastered' : ''}">
+    <button class="icon-button eng-speak-btn" data-say="${escapeHtml(item.word)}">🔊</button>
+    <div class="eng-word-row-main"><strong>${escapeHtml(item.word)}</strong><p>${escapeHtml(item.meaning || '')}${item.reason ? ` <small>· 错因：${escapeHtml(item.reason)}</small>` : ''}</p></div>
+    <div class="eng-word-row-side"><span class="tag 生活">${item.mastered ? '已掌握' : `错 ${item.wrongCount || 1} 次`}</span>
+      <small>${recentDateLabel(item.lastWrongAt || '')}</small>
+      <button class="secondary-button eng-wrong-action" data-wrong-toggle="${escapeHtml(item.word)}">${item.mastered ? '恢复' : '已掌握'}</button>
+      <button class="eng-delete-btn" data-del-word="${escapeHtml(item.word)}" title="删除">×</button></div></article>`).join('');
+}
+
+function engBuildQueue(items) {
+  const allWords = Object.values(engStore().words);
+  const fallbackPool = ['option','develop','provide','require','suggest','achieve','consider','increase','reduce','support'];
+  return items.map(item => {
+    const pool = allWords.filter(w => String(w.word || '').toLowerCase() !== String(item.word).toLowerCase()).map(w => w.word);
+    const distractors = [];
+    while (distractors.length < 3 && pool.length) distractors.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    let fi = Math.floor(Math.random() * fallbackPool.length);
+    while (distractors.length < 3) {
+      const fw = fallbackPool[fi % fallbackPool.length]; fi += 1;
+      if (fw.toLowerCase() !== String(item.word).toLowerCase() && !distractors.includes(fw)) distractors.push(fw);
+    }
+    const options = [item.word, ...distractors];
+    for (let i = options.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [options[i], options[j]] = [options[j], options[i]]; }
+    return {word: item.word, meaning: item.meaning || '', options};
+  });
+}
+
+function engDueItems() {
+  const today = formatDate(new Date());
+  const store = engStore();
+  const wrongKeys = new Set(Object.keys(store.wrongWords).filter(k => store.wrongWords[k] && !store.wrongWords[k].mastered));
+  return Object.values(store.words).filter(w => w && w.status !== 'mastered' && String(w.nextReviewAt || '').slice(0,10) <= today && !wrongKeys.has(w.word.toLowerCase()));
+}
+
+function engStartQuiz(mode = 'choice', items = null) {
+  let active;
+  if (Array.isArray(items)) {
+    active = items;
+    if (!active.length) { toast('没有需要复习的单词，明天再来吧'); return; }
+  } else {
+    active = Object.values(engStore().wrongWords).filter(item => item && !item.mastered)
+      .sort((a,b) => Number(b.wrongCount||0) - Number(a.wrongCount||0)).slice(0, 10);
+    if (!active.length) { toast('错词本是空的，先去今日任务里练几个词吧'); return; }
+  }
+  state.engQuiz = {queue: engBuildQueue(active.slice(0, 10)), index: 0, score: 0, picked: null, finished: false, mode};
+  renderEnglish();
+}
+
+function renderEngQuiz() {
+  const q = state.engQuiz;
+  const box = $('engWrongList');
+  $('engWrongEmpty').classList.add('hidden');
+  if (q.finished) {
+    box.innerHTML = `<section class="chart-card eng-quiz-card"><div class="eng-quiz-result">
+      <h3>${q.score === q.queue.length ? '满分！全对 🎉' : `测验结束 · 答对 ${q.score} / ${q.queue.length}`}</h3>
+      <p>${q.score >= q.queue.length * 0.8 ? '错词本快清空了，继续保持！' : '答错的词会留在错词本里，明天再来一轮。'}</p>
+      <div class="eng-quiz-actions"><button class="primary-button" id="engQuizAgain">再来一轮</button><button class="secondary-button" id="engQuizClose">完成</button></div>
+    </div></section>`;
+    $('engQuizAgain').onclick = () => engStartQuiz();
+    $('engQuizClose').onclick = () => { state.engQuiz = null; renderEnglish(); };
+    return;
+  }
+  const item = q.queue[q.index];
+  const revealed = Boolean(q.picked);
+  const isRight = revealed && engNormalize(q.picked) === engNormalize(item.word);
+  const spellMode = q.mode === 'spell';
+  box.innerHTML = `<section class="chart-card eng-quiz-card">
+    <div class="chart-header"><div><span class="eyebrow">WRONG WORD QUIZ</span><h3>第 ${q.index + 1} / ${q.queue.length} 题 · ${spellMode ? '听音拼写' : '看中文选单词'}</h3></div><span class="generated-source">得分 ${q.score}</span></div>
+    ${spellMode
+      ? `<div class="eng-spell-play"><button type="button" class="icon-button eng-speak-btn" data-say="${escapeHtml(item.word)}" title="再听一遍">🔊 再听一遍</button></div>
+         <div class="eng-spell-row"><input id="engSpellInput" class="eng-spell-input" placeholder="拼写出你听到的单词" autocomplete="off" spellcheck="false" ${revealed ? 'disabled' : ''} value="${revealed ? escapeHtml(String(q.picked)) : ''}" /><button type="button" class="primary-button" id="engSpellSubmit" ${revealed ? 'disabled' : ''}>提交</button></div>`
+      : `<p class="eng-quiz-meaning">${escapeHtml(item.meaning || '(该词暂无中文释义)')}</p>
+         <div class="eng-quiz-options">${item.options.map(opt => {
+           const correct = String(opt).toLowerCase() === String(item.word).toLowerCase();
+           const cls = !revealed ? '' : correct ? 'correct' : (opt === q.picked ? 'incorrect' : '');
+           return `<button type="button" class="eng-quiz-option ${cls}" data-quiz-pick="${escapeHtml(opt)}" ${revealed ? 'disabled' : ''}>${escapeHtml(opt)}</button>`;
+         }).join('')}</div>`}
+    ${revealed ? `<p class="eng-quiz-feedback ${isRight ? '' : 'wrong'}">${isRight ? (spellMode ? `✓ 拼对了：<b>${escapeHtml(item.word)}</b>` : '✓ 答对了！连续答对可自动掌握毕业') : `✗ 正确拼写：<b>${escapeHtml(item.word)}</b>${item.meaning ? `（${escapeHtml(item.meaning)}）` : ''}，已重新记入错词本`}</p>` : `<p class="eng-quiz-feedback">${spellMode ? '点击喇叭播放发音，不确定可以多听几遍' : '选出你认为正确的单词'}</p>`}
+  </section>`;
+  if (spellMode && !revealed) {
+    engSpeak(item.word);
+    const input = $('engSpellInput');
+    $('engSpellSubmit').onclick = () => engQuizPick(input.value);
+    input.onkeydown = event => { if (event.key === 'Enter') engQuizPick(input.value); };
+    setTimeout(() => input.focus(), 50);
+  }
+}
+
+async function engQuizPick(option) {
+  const q = state.engQuiz;
+  if (!q || q.picked) return;
+  const item = q.queue[q.index];
+  const correct = engNormalize(option) === engNormalize(item.word);
+  q.picked = option;
+  if (correct) q.score += 1;
+  if (q.mode !== 'spell') engSpeak(item.word);
+  try {
+    const data = await request('/api/english/words/review', {method:'POST', body:JSON.stringify({word: item.word, result: correct ? 'correct' : 'wrong'})});
+    const store = engStore(); const key = item.word.toLowerCase();
+    if (data.word) store.words[key] = data.word;
+    if (correct) delete store.wrongWords[key];
+    else if (!store.wrongWords[key]) store.wrongWords[key] = {word: item.word, meaning: item.meaning || '', wrongCount: 1};
+    else store.wrongWords[key].wrongCount = Number(store.wrongWords[key].wrongCount || 0) + 1;
+  } catch {}
+  renderEngWrong();
+  setTimeout(() => {
+    q.index += 1; q.picked = null;
+    if (q.index >= q.queue.length) q.finished = true;
+    if (state.engQuiz === q) renderEngWrong();
+  }, 1200);
+}
+
+function engNormalize(text) { return String(text || '').trim().toLowerCase().replace(/[^a-z'-]/g, ''); }
+
+function renderEngFavs() {
+  const store = engStore();
+  const items = Object.values(store.favorites).sort((a,b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+  $('engFavEmpty').classList.toggle('hidden', items.length > 0);
+  $('engFavList').innerHTML = items.map(f => `<article class="chart-card eng-sentence-card">
+    <div class="chart-header"><div><span class="eyebrow">FAVORITE · ${escapeHtml(f.date || '')}</span></div><div class="eng-plan-meta-side"><button class="icon-button eng-speak-btn" data-say="${escapeHtml(f.text)}">🔊</button><button class="eng-delete-btn" data-fav-del="${escapeHtml(f.key)}" title="删除">×</button></div></div>
+    <blockquote class="eng-sentence">${escapeHtml(f.text)}</blockquote>
+    ${f.translation ? `<p class="eng-example-cn">${escapeHtml(f.translation)}</p>` : ''}
+    ${(f.points || []).length ? `<ul class="eng-points">${f.points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}
+  </article>`).join('');
+}
+
+function renderEngChat() {
+  const chat = $('engChat');
+  if (!state.engMessages.length) {
+    chat.innerHTML = `<div class="eng-chat-empty"><b>AI 口语陪练</b><p>输入话题（如 job interview），然后用英语随便聊。<br>教练会用简单英文回复，并帮你纠正语法和用词错误。</p></div>`;
+    return;
+  }
+  chat.innerHTML = state.engMessages.map(msg => msg.role === 'user'
+    ? `<div class="eng-bubble user">${escapeHtml(msg.content)}</div>`
+    : `<div class="eng-bubble coach">${escapeHtml(msg.content)}<button class="eng-replay-btn" data-say="${escapeHtml(msg.content)}" title="重听">🔊</button>
+        ${(msg.corrections || []).map(c => `<div class="eng-correction"><b>✎ 更正：</b>${escapeHtml(c.original || '')} → <b>${escapeHtml(c.suggestion || '')}</b>${c.explanation ? `<span>${escapeHtml(c.explanation)}</span>` : ''}</div>`).join('')}</div>`).join('');
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function renderEngStats() {
+  const store = engStore();
+  const weekStart = (() => { const d = dateObj(state.selectedDate); d.setDate(d.getDate() - 6); return formatDate(d); })();
+  const weekly = store.weeklyReports[weekStart] || store.weeklyReports[state.selectedDate];
+  $('engWeeklyBox').innerHTML = weekly
+    ? `<div class="eng-weekly-report ${weekly.source === 'ai' ? 'ai' : ''}"><p class="eng-weekly-summary">${escapeHtml(weekly.summary || '')}</p>
+       ${(weekly.advice || []).map(a => `<p class="eng-weekly-advice">💡 ${escapeHtml(a)}</p>`).join('')}
+       ${weekly.encouragement ? `<p class="eng-weekly-cheer">${escapeHtml(weekly.encouragement)}</p>` : ''}
+       <small>新学 ${weekly.newWords || 0} 词 · 复习对/错 ${weekly.correct || 0}/${weekly.wrong || 0} · 口语 ${weekly.speakingMessages || 0} 条 · 打卡 ${weekly.planDays || 0} 天 · ${weekly.source === 'ai' ? 'AI 生成' : '本地生成'}</small></div>`
+    : '<p class="eng-empty">还没有本周周报，点右上角按钮生成。</p>';
+  const words = Object.values(store.words);
+  const mastered = words.filter(w => w.status === 'mastered').length;
+  $('engStatTotal').textContent = words.length;
+  $('engStatLearnDetail').textContent = `学习中 ${words.length - mastered} · 已掌握 ${mastered}`;
+  $('engStatBar').style.width = words.length ? `${Math.round(mastered / words.length * 100)}%` : '0%';
+  const wrongItems = Object.values(store.wrongWords);
+  const activeWrong = wrongItems.filter(item => !item.mastered);
+  $('engStatWrong').textContent = activeWrong.length;
+  $('engStatWrongDetail').textContent = `累计答错 ${wrongItems.reduce((sum,item) => sum + Number(item.wrongCount||0), 0)} 次`;
+  const week = weekDates(state.selectedDate).filter(d => d <= state.selectedDate);
+  const weekLogs = week.map(d => store.log[d] || {});
+  const weekSpeaking = weekLogs.reduce((sum,l) => sum + Number(l.speakingMessages||0), 0);
+  $('engStatSpeaking').textContent = `${weekSpeaking} 条`;
+  $('engStatSpeakingDetail').textContent = weekSpeaking ? '本周开口练过了，继续保持' : '还没有开口练习';
+  let streak = 0; const cursor = dateObj(state.selectedDate);
+  const isActive = d => { const l = store.log[d] || {}; return Number(l.newWords||0) + Number(l.correct||0) + Number(l.wrong||0) + Number(l.speakingMessages||0) + Number(l.planCompleted||0) > 0; };
+  while (isActive(formatDate(cursor))) { streak += 1; cursor.setDate(cursor.getDate() - 1); }
+  $('engStatStreak').innerHTML = `${streak} <b>天</b>`;
+  const max = Math.max(...week.map(d => { const l = store.log[d] || {}; return Number(l.newWords||0) + Number(l.correct||0) + Number(l.wrong||0) + Math.round(Number(l.speakingMessages||0)/2); }), 4);
+  $('engTrendChart').innerHTML = `<div class="eng-trend-bars">${week.map(d => {
+    const l = store.log[d] || {};
+    const nw = Number(l.newWords||0), rv = Number(l.correct||0) + Number(l.wrong||0), sp = Math.round(Number(l.speakingMessages||0)/2);
+    const scale = v => v / max * 100;
+    const label = `${dateObj(d).getMonth()+1}/${dateObj(d).getDate()}`;
+    const total = nw + rv + sp;
+    return `<div class="eng-trend-col" title="${label}：新学${nw} · 复习${rv} · 口语${sp}"><div class="eng-trend-stack">${total ? `<i class="t-new" style="height:${scale(nw)}%"></i><i class="t-review" style="height:${scale(rv)}%"></i><i class="t-speaking" style="height:${scale(sp)}%"></i>` : '<i class="t-empty"></i>'}</div><span>${label}</span></div>`;
+  }).join('')}</div>
+  <div class="eng-trend-legend"><span><i class="t-new"></i>新学</span><span><i class="t-review"></i>复习</span><span><i class="t-speaking"></i>口语(÷2)</span></div>`;
+}
+
+async function engGeneratePlan() {
+  const button = $('engGenerateBtn');
+  button.disabled = true; button.textContent = '✦ 正在生成…';
+  try {
+    const payload = {date: state.selectedDate, level: $('engLevel').value, focus: $('engFocus').value.trim()};
+    const result = await request('/api/english/plan', {method:'POST', body:JSON.stringify(payload)});
+    engStore().plans[payload.date] = result.plan;
+    (result.newWordEntries || []).forEach(entry => { engStore().words[entry.word.toLowerCase()] = entry; });
+    renderEnglish();
+    toast(`今日英语任务已生成${result.newWords ? `，新收录 ${result.newWords} 个单词` : ''}`);
+  } catch (error) { toast(error.message); }
+  finally { button.disabled = false; button.textContent = '✦ AI生成今日任务'; }
+}
+
+async function engSend(messageText) {
+  const message = (messageText ?? $('engChatInput').value).trim();
+  if (!message) return;
+  $('engChatInput').value = '';
+  state.engMessages.push({role:'user', content:message});
+  renderEngChat();
+  $('engSendBtn').disabled = true;
+  try {
+    const history = state.engMessages.slice(0, -1).slice(-12);
+    const result = await request('/api/english/speaking', {method:'POST', body:JSON.stringify({sessionId: state.engSessionId, topic: $('engTopic').value.trim() || 'Free talk', message, history})});
+    state.engSessionId = result.id;
+    state.engMessages.push({role:'coach', content:result.reply, corrections:result.corrections || []});
+    engSpeak(result.reply);
+  } catch (error) { state.engMessages.push({role:'coach', content:`（连接失败：${error.message}）`, corrections:[]}); }
+  finally { $('engSendBtn').disabled = false; renderEngChat(); }
+}
+
+let engRecognition = null;
+function engToggleMic() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { toast('当前浏览器不支持语音识别，请直接输入文字'); return; }
+  if (engRecognition) { engRecognition.stop(); engRecognition = null; $('engMicBtn').classList.remove('recording'); $('engMicHint').classList.add('hidden'); return; }
+  engRecognition = new Recognition();
+  engRecognition.lang = 'en-US'; engRecognition.interimResults = false;
+  engRecognition.onresult = event => { const text = event.results[0][0].transcript; engRecognition = null; $('engMicBtn').classList.remove('recording'); $('engMicHint').classList.add('hidden'); engSend(text); };
+  engRecognition.onerror = () => { engRecognition = null; $('engMicBtn').classList.remove('recording'); $('engMicHint').classList.add('hidden'); toast('没有听清，再试一次或直接输入文字'); };
+  engRecognition.onend = () => { $('engMicBtn').classList.remove('recording'); };
+  $('engMicBtn').classList.add('recording');
+  $('engMicHint').textContent = '🎙 正在聆听…请用英语说话'; $('engMicHint').classList.remove('hidden');
+  engRecognition.start();
+}
+
+document.querySelectorAll('.eng-tab').forEach(el => el.onclick = () => { state.engTab = el.dataset.engTab; renderEnglish(); });
+$('engGenerateBtn').onclick = engGeneratePlan;
+$('engQuizBtn').onclick = () => engStartQuiz('choice');
+$('engSpellBtn').onclick = () => engStartQuiz('spell');
+$('engQuizExit').onclick = () => { state.engQuiz = null; renderEnglish(); };
+$('engWordSearch').oninput = e => { state.engWordQuery = e.target.value; renderEngWords(); };
+$('engAddWordBtn').onclick = async () => {
+  const word = (prompt('要添加的英文单词') || '').trim();
+  if (!word) return;
+  const meaning = (prompt('中文释义（可留空）', '') || '').trim();
+  try { const saved = await request('/api/english/words', {method:'POST', body:JSON.stringify({word, meaning})}); engStore().words[saved.word.toLowerCase()] = saved; renderEnglish(); toast(`「${saved.word}」已加入词库`); } catch (error) { toast(error.message); }
+};
+document.addEventListener('click', async event => {
+  if (state.view !== 'english') return;
+  const say = event.target.closest('[data-say]');
+  if (say) { engSpeak(say.dataset.say); return; }
+  const quizPick = event.target.closest('[data-quiz-pick]');
+  if (quizPick) { engQuizPick(quizPick.dataset.quizPick); return; }
+  const fav = event.target.closest('[data-fav]');
+  if (fav) {
+    const store = engStore();
+    const text = fav.dataset.fav;
+    if (!text) return;
+    const existing = Object.values(store.favorites).find(f => f.text === text);
+    try {
+      if (existing) {
+        await request(`/api/english/sentence-favs/${encodeURIComponent(existing.key)}`, {method:'DELETE'});
+        delete store.favorites[existing.key];
+        toast('已取消收藏');
+      } else {
+        const plan = engStore().plans[state.selectedDate] || {};
+        const sent = plan.sentence || {};
+        const res = await request('/api/english/sentence-favs', {method:'POST', body:JSON.stringify({text, translation: sent.translation || '', points: sent.points || [], date: state.selectedDate, level: plan.level || ''})});
+        if (res.favorite) store.favorites[res.favorite.key] = res.favorite;
+        toast('句子已收藏 ❤');
+      }
+      renderEnglish();
+    } catch (error) { toast(error.message); }
+    return;
+  }
+  const favDel = event.target.closest('[data-fav-del]');
+  if (favDel && confirm('删除这条收藏？')) {
+    try { await request(`/api/english/sentence-favs/${encodeURIComponent(favDel.dataset.favDel)}`, {method:'DELETE'}); delete engStore().favorites[favDel.dataset.favDel]; renderEnglish(); } catch (error) { toast(error.message); }
+    return;
+  }
+  const review = event.target.closest('[data-review]');
+  if (review) { engReview(review.dataset.word, review.dataset.review); return; }
+  const del = event.target.closest('[data-del-word]');
+  if (del && confirm(`确定删除单词「${del.dataset.delWord}」？`)) {
+    try { await request(`/api/english/words/${encodeURIComponent(del.dataset.delWord.toLowerCase())}`, {method:'DELETE'}); const store = engStore(); delete store.words[del.dataset.delWord.toLowerCase()]; delete store.wrongWords[del.dataset.delWord.toLowerCase()]; renderEnglish(); toast('单词已删除'); } catch (error) { toast(error.message); }
+    return;
+  }
+  const toggle = event.target.closest('[data-wrong-toggle]');
+  if (toggle) {
+    const key = toggle.dataset.wrongToggle.toLowerCase(); const item = engStore().wrongWords[key];
+    if (!item) return;
+    try { const updated = await request(`/api/english/wrong-words/${encodeURIComponent(key)}`, {method:'PUT', body:JSON.stringify({mastered:!item.mastered})}); engStore().wrongWords[key] = updated; renderEnglish(); } catch (error) { toast(error.message); }
+  }
+});
+$('engSendBtn').onclick = () => engSend();
+$('engChatInput').onkeydown = event => { if (event.key === 'Enter') engSend(); };
+$('engMicBtn').onclick = engToggleMic;
+$('engExportBtn').onclick = () => { window.open('/api/export?type=english-words'); toast('词库 CSV 已开始下载'); };
+$('engImportBtn').onclick = async () => {
+  const raw = (prompt('每行一个单词（最多30个），例如：\nabandon\nsignificant\nreluctant') || '').trim();
+  if (!raw) return;
+  const words = raw.split(/[\n,，;；]+/).map(w => w.trim()).filter(Boolean);
+  if (!words.length) { toast('没有识别到有效单词'); return; }
+  toast(`正在导入 ${words.length} 个单词…`);
+  try {
+    const res = await request('/api/english/words/import', {method:'POST', body:JSON.stringify({words})});
+    (res.entries || []).forEach(entry => { engStore().words[entry.word.toLowerCase()] = entry; });
+    renderEnglish();
+    toast(res.imported ? `成功导入 ${res.imported} 个单词${res.skipped ? `，跳过重复 ${res.skipped} 个` : ''}` : '这些单词都已在词库里啦');
+  } catch (error) { toast(error.message); }
+};
+$('engWeeklyBtn').onclick = async () => {
+  const btn = $('engWeeklyBtn');
+  btn.disabled = true; btn.textContent = '✦ 正在生成…';
+  try {
+    const report = await request('/api/english/weekly-report', {method:'POST', body:'{}'});
+    engStore().weeklyReports[report.weekStart] = report;
+    state.engTab = 'stats';
+    renderEnglish();
+    toast('英语周报已生成 ✓');
+  } catch (error) { toast(error.message); }
+  finally { btn.disabled = false; btn.textContent = '✦ 生成本周周报'; }
+};
+(function initEngTts() { try {
+  const savedRate = localStorage.getItem('engRate');
+  const savedLang = localStorage.getItem('engVoiceLang');
+  if (savedRate) $('engRate').value = savedRate;
+  if (savedLang) $('engAccent').value = savedLang;
+  $('engRate').onchange = e => { localStorage.setItem('engRate', e.target.value); toast('朗读语速已保存'); };
+  $('engAccent').onchange = e => { localStorage.setItem('engVoiceLang', e.target.value); toast('口音已保存，马上听听看 🔊'); engSpeak('Hello, this is my favorite English sentence.'); };
+} catch (error) {} })();

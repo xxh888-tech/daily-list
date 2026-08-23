@@ -14,3 +14,6 @@ __pycache__/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 生成的图表
+charts/

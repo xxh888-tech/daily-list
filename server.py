@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """A tiny LAN-friendly server for the Daily List app."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
+import base64
 import csv
+import hashlib
 import io
 import json
 import os
@@ -22,6 +24,29 @@ MAX_BACKUPS = 7
 PORT = 8000
 DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
+ENGLISH_LEVELS = {"cet4": "大学英语四级", "cet6": "大学英语六级", "kaoyan": "考研英语", "ielts": "雅思", "daily": "日常英语"}
+# 艾宾浩斯间隔重复：连续答对后下一次复习的间隔天数
+SRS_INTERVALS = [1, 2, 4, 7, 15]
+ENGLISH_FALLBACK_WORDS = [
+    {"word": "abandon", "phonetic": "/əˈbændən/", "meaning": "vt. 放弃；抛弃", "example": "He abandoned the plan at the last minute.", "exampleTranslation": "他在最后一刻放弃了这个计划。"},
+    {"word": "efficient", "phonetic": "/ɪˈfɪʃnt/", "meaning": "adj. 高效的", "example": "She is an efficient worker.", "exampleTranslation": "她是一名高效率的工作者。"},
+    {"word": "reluctant", "phonetic": "/rɪˈlʌktənt/", "meaning": "adj. 不情愿的", "example": "He was reluctant to admit his mistake.", "exampleTranslation": "他不愿意承认自己的错误。"},
+    {"word": "significant", "phonetic": "/sɪɡˈnɪfɪkənt/", "meaning": "adj. 重要的；显著的", "example": "There was a significant improvement in her grades.", "exampleTranslation": "她的成绩有了显著提高。"},
+    {"word": "negotiate", "phonetic": "/nɪˈɡoʊʃieɪt/", "meaning": "v. 谈判；协商", "example": "They negotiated a lower price.", "exampleTranslation": "他们谈成了一个更低的价格。"},
+    {"word": "persuade", "phonetic": "/pərˈsweɪd/", "meaning": "vt. 说服", "example": "She persuaded me to join the club.", "exampleTranslation": "她说服我加入了俱乐部。"},
+    {"word": "consequence", "phonetic": "/ˈkɑːnsəkwens/", "meaning": "n. 后果；结果", "example": "Every choice has its consequences.", "exampleTranslation": "每个选择都有它的后果。"},
+    {"word": "diligent", "phonetic": "/ˈdɪlɪdʒənt/", "meaning": "adj. 勤奋的", "example": "Diligent students review lessons every day.", "exampleTranslation": "勤奋的学生每天都复习功课。"},
+    {"word": "estimate", "phonetic": "/ˈestɪmeɪt/", "meaning": "v. 估计；估算", "example": "I estimate it will take two hours.", "exampleTranslation": "我估计这需要两个小时。"},
+    {"word": "genuine", "phonetic": "/ˈdʒenjuɪn/", "meaning": "adj. 真诚的；真正的", "example": "She showed genuine interest in my idea.", "exampleTranslation": "她对我的想法表现出真诚的兴趣。"},
+    {"word": "implement", "phonetic": "/ˈɪmplɪment/", "meaning": "vt. 实施；执行", "example": "The school implemented a new schedule.", "exampleTranslation": "学校实施了一份新的时间表。"},
+    {"word": "overcome", "phonetic": "/ˌoʊvərˈkʌm/", "meaning": "vt. 克服", "example": "He overcame his fear of speaking.", "exampleTranslation": "他克服了说话的恐惧。"},
+]
+ENGLISH_FALLBACK_SENTENCES = [
+    {"text": "Practice makes progress, not perfection.", "translation": "练习带来的是进步，而不是完美。", "points": ["make progress 固定搭配：取得进步", "not perfection 与 progress 形成对比强调"]},
+    {"text": "A little effort every day adds up to something big.", "translation": "每天一点点努力，累积起来就是大成就。", "points": ["add up to：累计达到", "a little + 不可数名词 effort"]},
+    {"text": "The best time to start was yesterday; the next best time is now.", "translation": "开始的最好时间是昨天，其次是现在。", "points": ["the best time to do sth 句型", "分号连接两个并列分句"]},
+]
+
 GOAL_CATEGORIES = {"健康", "学习", "工作", "生活", "减肥"}
 GOAL_METRICS = {
     "健康": {"distance": "公里", "duration": "小时", "completedCount": "次"},
@@ -32,13 +57,78 @@ GOAL_METRICS = {
 }
 
 
+DEFAULT_DATA = {"tasks": [], "dailyRecords": {}, "goals": [], "habits": [], "growthReports": {}, "english": {}, "settings": {"name": "我的每日清单"}}
+
+
 def read_data():
     if not DATA_FILE.exists():
-        return {"tasks": [], "dailyRecords": {}, "goals": [], "habits": [], "growthReports": {}, "settings": {"name": "我的每日清单"}}
+        return json.loads(json.dumps(DEFAULT_DATA))
     try:
-        return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"tasks": [], "dailyRecords": {}, "goals": [], "habits": [], "growthReports": {}, "settings": {"name": "我的每日清单"}}
+        data = json.loads(json.dumps(DEFAULT_DATA))
+    if not isinstance(data.get("english"), dict):
+        data["english"] = {}
+    return data
+
+
+def _english_store(data):
+    """确保 english 数据结构完整，返回引用。"""
+    store = data.setdefault("english", {})
+    if not isinstance(store, dict):
+        store = {}
+        data["english"] = store
+    for key in ("plans", "words", "wrongWords", "log", "favorites", "weeklyReports"):
+        if not isinstance(store.get(key), dict):
+            store[key] = {}
+    if not isinstance(store.get("sessions"), list):
+        store["sessions"] = []
+    return store
+
+
+def _today_str():
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _touch_english_log(store, date, **fields):
+    log = store["log"].setdefault(date, {"newWords": 0, "correct": 0, "wrong": 0, "speakingMessages": 0})
+    for key, value in fields.items():
+        log[key] = int(log.get(key) or 0) + value
+    cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    for old_date in [key for key in store["log"] if str(key) < cutoff]:
+        del store["log"][old_date]
+    return log
+
+
+def _build_english_csv(data):
+    store = _english_store(data)
+    import csv as _csv
+    buf = io.StringIO()
+    writer = _csv.writer(buf)
+    writer.writerow(["单词", "音标", "释义", "例句", "例句翻译", "状态", "加入时间", "复习次数", "答对", "答错", "记忆阶段", "下次复习"])
+    for entry in sorted(store["words"].values(), key=lambda w: str(w.get("addedAt") or "")):
+        writer.writerow([entry.get("word", ""), entry.get("phonetic", ""), entry.get("meaning", ""),
+                         entry.get("example", ""), entry.get("exampleTranslation", ""),
+                         "已掌握" if entry.get("status") == "mastered" else "学习中",
+                         str(entry.get("addedAt") or "")[:10], entry.get("reviewCount", 0),
+                         entry.get("correctCount", 0), entry.get("wrongCount", 0),
+                         entry.get("stage", 0), entry.get("nextReviewAt", "")])
+    return buf.getvalue()
+
+
+def _clean_word_entry(raw):
+    if not isinstance(raw, dict):
+        return None
+    word = str(raw.get("word") or "").strip()
+    if not word or len(word) > 60:
+        return None
+    return {
+        "word": word,
+        "phonetic": str(raw.get("phonetic") or "").strip()[:80],
+        "meaning": _clean_text(raw.get("meaning"), 200),
+        "example": _clean_text(raw.get("example"), 300),
+        "exampleTranslation": _clean_text(raw.get("exampleTranslation"), 300),
+    }
 
 
 def _clean_goal(payload, existing=None):
@@ -589,7 +679,246 @@ def _ai_review(payload):
         raise RuntimeError(f"AI 服务调用失败：{error}") from error
 
 
+def _local_english_plan(payload):
+    """无 API Key 时的本地词库计划，保证功能离线可用。"""
+    level = payload.get("level") if payload.get("level") in ENGLISH_LEVELS else "cet4"
+    seed = sum(int(ch) for ch in str(payload.get("date") or _today_str()) if ch.isdigit())
+    pool = [dict(item) for item in ENGLISH_FALLBACK_WORDS]
+    recent = {str(w).lower() for w in (payload.get("recentWords") or []) if w}
+    if recent:
+        filtered = [item for item in pool if item["word"].lower() not in recent]
+        if filtered:
+            pool = filtered
+    words = []
+    seen_words = set()
+    def _take(entry):
+        if entry and entry["word"].lower() not in seen_words:
+            seen_words.add(entry["word"].lower())
+            words.append(entry)
+    for item in (payload.get("dueWords") or [])[:3]:
+        _take(_clean_word_entry(item))
+    wrong = payload.get("wrongWords") if isinstance(payload.get("wrongWords"), list) else []
+    for item in wrong[:2]:
+        _take(_clean_word_entry(item))
+    index = seed % len(pool)
+    while len(words) < 6 and pool:
+        _take(pool.pop(index % len(pool)))
+        index += 3
+    sentence = dict(ENGLISH_FALLBACK_SENTENCES[seed % len(ENGLISH_FALLBACK_SENTENCES)])
+    return {
+        "level": level,
+        "words": words,
+        "sentence": sentence,
+        "speaking": {"topic": "Talk about your plan for this weekend", "scene": "和朋友闲聊", "starter": "I'm thinking about..."},
+        "tip": "先读一遍单词和例句，再遮住中文自测；不确定的单词点“不认识”加入错词本。",
+        "source": "local",
+    }
+
+
+def _english_plan_ai(payload, api_key, config):
+    api_url = config.get("deepseek_api_url") or DEFAULT_DEEPSEEK_URL
+    model = config.get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL
+    level_label = ENGLISH_LEVELS.get(payload.get("level"), ENGLISH_LEVELS["cet4"])
+    focus = _clean_text(payload.get("focus"), 100)
+    wrong = payload.get("wrongWords") if isinstance(payload.get("wrongWords"), list) else []
+    due = payload.get("dueWords") if isinstance(payload.get("dueWords"), list) else []
+    recent = [str(w) for w in (payload.get("recentWords") or [])][:20]
+    seen_names = set()
+    review_names = []
+    for item in due + wrong:
+        name = _clean_text(item if isinstance(item, str) else (item or {}).get("word"), 40)
+        if name and name.lower() not in seen_names:
+            seen_names.add(name.lower())
+            review_names.append(name)
+    review_names_text = "、".join(review_names[:8])
+    recent_text = "、".join(recent)
+    system = (
+        "你是一名专业的AI英语教练，为中国学习者设计每日英语学习任务。"
+        f"目标水平：{level_label}。" + (f"用户希望重点练习：{focus}。" if focus else "")
+        + (f"以下是用户到期需要复习的单词，请优先安排其中2-4个：{review_names_text}。" if review_names_text else "")
+        + (f"不要选用这些最近7天已学过的单词：{recent_text}。" if recent_text else "")
+        + "必须严格返回 JSON，不要 Markdown，字段为："
+          "words（恰好6个单词的对象数组，每项含 word、phonetic（音标）、meaning（中文释义）、example（英文例句）、exampleTranslation（例句中文翻译）），"
+          "sentence（对象，含 text（地道英文句子）、translation（中文翻译）、points（1-3条语法/搭配要点的字符串数组）），"
+          "speaking（对象，含 topic（口语话题，英文）、scene（场景说明，中文）、starter（开场句，英文）），"
+          "tip（一条简短的中文学习方法建议）。"
+          "单词不要编造不存在的词，例句要贴近生活、难度符合目标水平。"
+    )
+    body = json.dumps({"model": model, "temperature": 0.6, "response_format": {"type": "json_object"},
+                       "messages": [{"role": "system", "content": system},
+                                    {"role": "user", "content": f"请生成 {payload.get('date') or '今天'} 的英语学习任务"}]}).encode("utf-8")
+    request = urllib.request.Request(api_url, data=body, headers={
+        "Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}, method="POST")
+    with urllib.request.urlopen(request, timeout=90) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    plan = _parse_ai_json(result["choices"][0]["message"]["content"])
+    if not isinstance(plan, dict):
+        raise ValueError("返回格式不正确")
+    words = [_clean_word_entry(item) for item in (plan.get("words") or [])]
+    words = [item for item in words if item][:10]
+    if len(words) < 3:
+        raise ValueError("AI 返回的单词不足")
+    sentence_raw = plan.get("sentence") if isinstance(plan.get("sentence"), dict) else {}
+    speaking_raw = plan.get("speaking") if isinstance(plan.get("speaking"), dict) else {}
+    points = [str(p)[:120] for p in (sentence_raw.get("points") or [])][:3]
+    return {
+        "level": payload.get("level") if payload.get("level") in ENGLISH_LEVELS else "cet4",
+        "words": words,
+        "sentence": {"text": _clean_text(sentence_raw.get("text"), 300), "translation": _clean_text(sentence_raw.get("translation"), 300), "points": points},
+        "speaking": {"topic": _clean_text(speaking_raw.get("topic"), 200) or "Free talk", "scene": _clean_text(speaking_raw.get("scene"), 100), "starter": _clean_text(speaking_raw.get("starter"), 200)},
+        "tip": _clean_text(plan.get("tip"), 300),
+        "source": "ai",
+    }
+
+
+def build_english_plan(payload):
+    """生成每日英语计划：优先 AI，失败自动回退本地词库。"""
+    date = str(payload.get("date") or _today_str()).strip()
+    config = load_config()
+    api_key = config.get("deepseek_api_key") or os.environ.get("DEEPSEEK_API_KEY")
+    plan = None
+    if api_key:
+        try:
+            plan = _english_plan_ai({**payload, "date": date}, api_key, config)
+        except Exception:  # noqa: BLE001 - AI 失败时回退本地词库
+            plan = None
+    if plan is None:
+        plan = _local_english_plan({**payload, "date": date})
+    plan["date"] = date
+    plan["generatedAt"] = datetime.now().isoformat(timespec="seconds")
+    plan.setdefault("completed", False)
+    return plan
+
+
+def _english_speak_local(message):
+    replies = [
+        "Good try! Could you say that again using a full sentence? For example: “I think ... because ...”",
+        "Nice effort! Let's practice more. Try answering: Why do you think so?",
+        "Great! Can you add one more detail to your answer?",
+    ]
+    seed = sum(ord(ch) for ch in message) % len(replies)
+    return {"reply": replies[seed], "corrections": [], "source": "local"}
+
+
+def _english_speak(payload, api_key, config):
+    api_url = config.get("deepseek_api_url") or DEFAULT_DEEPSEEK_URL
+    model = config.get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL
+    topic = _clean_text(payload.get("topic"), 100) or "Free talk"
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    messages = [{"role": "system", "content": (
+        "你是一名友好、有耐心的AI英语口语教练。当前话题：" + topic + "。规则："
+        "1）始终用简单清晰的英文回复（B1 水平，1-4句话），像聊天一样自然推进对话，可以适当追问；"
+        "2）如果用户的英文有语法/用词/拼写错误，在 corrections 里指出，没有错误则 corrections 为空数组；"
+        "3）用户用中文表达时，鼓励并教他对应的英文说法；"
+        "4）必须严格返回 JSON，不要 Markdown，字段为：reply（你的英文回复）、"
+        "corrections（对象数组，每项含 original（用户原句片段）、suggestion（改正后）、explanation（中文简短解释））。"
+    )}]
+    for item in history[-12:]:
+        if not isinstance(item, dict):
+            continue
+        role = "assistant" if item.get("role") == "coach" else "user"
+        content = _clean_text(item.get("content"), 800)
+        if content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": _clean_text(payload.get("message"), 800)})
+    body = json.dumps({"model": model, "temperature": 0.7, "response_format": {"type": "json_object"},
+                       "messages": messages}).encode("utf-8")
+    request = urllib.request.Request(api_url, data=body, headers={
+        "Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}, method="POST")
+    with urllib.request.urlopen(request, timeout=90) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    reply_data = _parse_ai_json(result["choices"][0]["message"]["content"])
+    if isinstance(reply_data, str):
+        reply_data = {"reply": reply_data}
+    if not isinstance(reply_data, dict) or not str(reply_data.get("reply", "")).strip():
+        raise ValueError("回复格式不正确")
+    corrections = []
+    for item in (reply_data.get("corrections") or [])[:3]:
+        if isinstance(item, dict) and str(item.get("suggestion") or "").strip():
+            corrections.append({"original": _clean_text(item.get("original"), 200), "suggestion": _clean_text(item.get("suggestion"), 200), "explanation": _clean_text(item.get("explanation"), 200)})
+    return {"reply": _clean_text(reply_data.get("reply"), 1500), "corrections": corrections, "source": "ai"}
+
+
+def _english_weekly_stats(store):
+    week_start = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+    logs = [log for day, log in store["log"].items() if str(day) >= week_start]
+    new_words = sum(int(l.get("newWords") or 0) for l in logs)
+    correct = sum(int(l.get("correct") or 0) for l in logs)
+    wrong = sum(int(l.get("wrong") or 0) for l in logs)
+    speaking = sum(int(l.get("speakingMessages") or 0) for l in logs)
+    plan_days = sum(1 for l in logs if int(l.get("planCompleted") or 0) > 0)
+    words = list(store["words"].values())
+    active_wrong = [w for w in store["wrongWords"].values() if isinstance(w, dict) and not w.get("mastered")]
+    return {"weekStart": week_start, "newWords": new_words, "correct": correct, "wrong": wrong,
+            "speakingMessages": speaking, "planDays": plan_days,
+            "totalWords": len(words), "mastered": len([w for w in words if w.get("status") == "mastered"]),
+            "activeWrong": len(active_wrong),
+            "topWrong": sorted([w.get("word") for w in active_wrong], key=lambda x: x or "")[:5]}
+
+
+def _english_weekly_report_ai(stats, api_key, config):
+    api_url = config.get("deepseek_api_url") or DEFAULT_DEEPSEEK_URL
+    model = config.get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL
+    system = (
+        "你是一名暖心的英语学习教练，根据数据用中文写一份简短周报。"
+        "必须严格返回 JSON：summary（本周表现总结，120字内，引用具体数字）、"
+        "advice（2条改进建议的字符串数组）、encouragement（一句话鼓励）。"
+    )
+    body = json.dumps({"model": model, "temperature": 0.7, "response_format": {"type": "json_object"},
+                       "messages": [{"role": "system", "content": system},
+                                    {"role": "user", "content": json.dumps(stats, ensure_ascii=False)}]}).encode("utf-8")
+    request = urllib.request.Request(api_url, data=body, headers={
+        "Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}, method="POST")
+    with urllib.request.urlopen(request, timeout=90) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    report = _parse_ai_json(result["choices"][0]["message"]["content"])
+    if not isinstance(report, dict) or not str(report.get("summary") or "").strip():
+        raise ValueError("返回格式不正确")
+    return {"summary": _clean_text(report.get("summary"), 400),
+            "advice": [str(a)[:150] for a in (report.get("advice") or [])][:2],
+            "encouragement": _clean_text(report.get("encouragement"), 100), "source": "ai"}
+
+
+def _english_weekly_report_local(stats):
+    accuracy = f"{round(stats['correct'] / (stats['correct'] + stats['wrong']) * 100)}%" if stats["correct"] + stats["wrong"] else "暂无"
+    summary = (f"本周新学 {stats['newWords']} 个单词，复习正确率 {accuracy}，口语练习 {stats['speakingMessages']} 条消息，"
+               f"完成每日任务 {stats['planDays']} 天。词库累计 {stats['totalWords']} 词（已掌握 {stats['mastered']}），待消灭错词 {stats['activeWrong']} 个。")
+    advice = []
+    if stats["wrong"] > stats["correct"]:
+        advice.append("答错偏多，建议先用“听音拼写”慢速过一遍错词本再做题。")
+    if stats["speakingMessages"] == 0:
+        advice.append("本周还没开口练口语，挑一个话题和 AI 教练聊五分钟。")
+    if not advice:
+        advice.append("节奏很稳，下周可以尝试提高目标水平或加一次听音拼写。")
+    advice.append(f"重点关照错词：{('、'.join(stats['topWrong'])) if stats['topWrong'] else '暂无'}。")
+    return {"summary": summary, "advice": advice[:2], "encouragement": "坚持就是胜利，下周继续！", "source": "local"}
+
+
 class AppHandler(SimpleHTTPRequestHandler):
+    def _check_auth(self):
+        """局域网访问口令（HTTP Basic Auth），在 config.json 的 access_password 配置，留空则不启用"""
+        password = str(load_config().get("access_password", "")).strip()
+        if not password:
+            return True
+        expected = "Basic " + base64.b64encode(f"user:{password}".encode()).decode()
+        header = self.headers.get("Authorization", "")
+        if header == expected:
+            return True
+        # 兼容任意用户名：只校验密码部分
+        if header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(header[6:]).decode("utf-8", "ignore")
+                if ":" in decoded and decoded.split(":", 1)[1] == password:
+                    return True
+            except Exception:
+                pass
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Daily Checklist"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def end_headers(self):
         target = urlparse(self.path).path.lower()
         if target == "/" or target.endswith((".html", ".js", ".css")):
@@ -610,6 +939,8 @@ class AppHandler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(length) or b"{}")
 
     def do_GET(self):
+        if not self._check_auth():
+            return
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/config.json":
@@ -617,6 +948,12 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/state":
             self._json(read_data())
+            return
+        if path == "/api/english/sessions":
+            store = _english_store(read_data())
+            sessions = [dict(item, messages=(item.get("messages") or [])[-50:])
+                        for item in store["sessions"][:10] if isinstance(item, dict)]
+            self._json({"sessions": sessions})
             return
         if path == "/api/goals":
             self._json(read_data().get("goals", []))
@@ -629,8 +966,11 @@ class AppHandler(SimpleHTTPRequestHandler):
             kind = parse_qs(parsed.query).get("type", ["tasks"])[0]
             data = read_data()
             try:
-                csv_text = _build_days_csv(data) if kind == "days" else _build_tasks_csv(data)
-                kind = "days" if kind == "days" else "tasks"
+                if kind == "english-words":
+                    csv_text = _build_english_csv(data)
+                else:
+                    csv_text = _build_days_csv(data) if kind == "days" else _build_tasks_csv(data)
+                    kind = "days" if kind == "days" else "tasks"
             except (KeyError, TypeError, ValueError) as error:
                 self._json({"error": f"导出失败: {error}"}, 500)
                 return
@@ -647,6 +987,8 @@ class AppHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        if not self._check_auth():
+            return
         path = urlparse(self.path).path
         if path == "/api/goals":
             try:
@@ -719,6 +1061,278 @@ class AppHandler(SimpleHTTPRequestHandler):
             except (json.JSONDecodeError, ValueError, TypeError) as error:
                 self._json({"error": str(error) or "习惯数据格式不正确"}, 400)
             return
+        if path == "/api/english/plan":
+            try:
+                payload = self._body()
+                if not isinstance(payload, dict):
+                    raise ValueError("参数格式不正确")
+                data = read_data()
+                store = _english_store(data)
+                anchor_date = str(payload.get("date") or _today_str())
+                payload["wrongWords"] = [item for item in store["wrongWords"].values() if isinstance(item, dict) and not item.get("mastered")]
+                recent_cutoff = (datetime.strptime(anchor_date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
+                payload["recentWords"] = sorted({str(e.get("word")) for e in store["words"].values()
+                                                 if isinstance(e, dict) and str(e.get("addedAt") or "")[:10] > recent_cutoff})
+                payload["dueWords"] = [{**e} for e in store["words"].values()
+                                       if isinstance(e, dict) and e.get("status") != "mastered"
+                                       and str(e.get("nextReviewAt") or "9999-99-99") <= anchor_date]
+                plan = build_english_plan(payload)
+                date = plan["date"]
+                old_plan = store["plans"].get(date) if isinstance(store["plans"].get(date), dict) else {}
+                known = {word.lower() for word in store["words"]}
+                new_entries = []
+                for entry in plan.get("words", []):
+                    key = entry["word"].lower()
+                    if key not in known:
+                        store["words"][key] = {**entry, "addedAt": datetime.now().isoformat(timespec="seconds"), "reviewCount": 0, "correctCount": 0, "wrongCount": 0, "lastReviewAt": "", "status": "learning", "stage": 0, "nextReviewAt": ""}
+                        new_entries.append(store["words"][key])
+                        known.add(key)
+                new_count = len(new_entries)
+                plan["completed"] = bool(old_plan.get("completed")) and old_plan.get("words") == plan.get("words")
+                store["plans"][date] = plan
+                _touch_english_log(store, date, newWords=new_count)
+                save_data(data)
+                self._json({"plan": plan, "newWords": new_count, "newWordEntries": new_entries})
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "计划生成失败"}, 400)
+            return
+        if path == "/api/english/words/review":
+            try:
+                payload = self._body()
+                word_key = str(payload.get("word") or "").strip().lower()
+                result = "wrong" if payload.get("result") == "wrong" else "correct"
+                data = read_data()
+                store = _english_store(data)
+                entry = store["words"].get(word_key)
+                if not entry:
+                    self._json({"error": "该单词不在词库中"}, 404)
+                    return
+                now_iso = datetime.now().isoformat(timespec="seconds")
+                entry["reviewCount"] = int(entry.get("reviewCount") or 0) + 1
+                entry["lastReviewAt"] = now_iso
+                if result == "correct":
+                    entry["correctCount"] = int(entry.get("correctCount") or 0) + 1
+                    entry["status"] = "mastered" if entry["correctCount"] >= 3 else "learning"
+                    next_stage = int(entry.get("stage") or 0) + 1
+                    entry["stage"] = min(next_stage, len(SRS_INTERVALS))
+                    interval = SRS_INTERVALS[min(next_stage, len(SRS_INTERVALS)) - 1]
+                    entry["nextReviewAt"] = (datetime.now() + timedelta(days=interval)).strftime("%Y-%m-%d")
+                    removed = store["wrongWords"].pop(word_key, None) is not None
+                    _touch_english_log(store, _today_str(), correct=1)
+                else:
+                    entry["wrongCount"] = int(entry.get("wrongCount") or 0) + 1
+                    entry["status"] = "learning"
+                    entry["stage"] = 0
+                    entry["nextReviewAt"] = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+                    wrong_entry = store["wrongWords"].get(word_key) or {"word": entry.get("word", payload.get("word")), "meaning": entry.get("meaning", ""), "reason": str(payload.get("reason") or "").strip()[:200]}
+                    wrong_entry["wrongCount"] = int(wrong_entry.get("wrongCount") or 0) + 1
+                    wrong_entry["lastWrongAt"] = now_iso
+                    wrong_entry["mastered"] = False
+                    if payload.get("reason"):
+                        wrong_entry["reason"] = str(payload.get("reason")).strip()[:200]
+                    store["wrongWords"][word_key] = wrong_entry
+                    _touch_english_log(store, _today_str(), wrong=1)
+                save_data(data)
+                self._json({"word": entry})
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "记录失败"}, 400)
+            return
+        if path == "/api/english/words":
+            try:
+                payload = self._body()
+                entry = _clean_word_entry(payload)
+                if not entry:
+                    self._json({"error": "单词不能为空"}, 400)
+                    return
+                data = read_data()
+                store = _english_store(data)
+                key = entry["word"].lower()
+                existing = store["words"].get(key)
+                if existing:
+                    existing.update({k: v for k, v in entry.items() if v})
+                    word_result = existing
+                else:
+                    store["words"][key] = {**entry, "addedAt": datetime.now().isoformat(timespec="seconds"), "reviewCount": 0, "correctCount": 0, "wrongCount": 0, "lastReviewAt": "", "status": "learning", "stage": 0, "nextReviewAt": ""}
+                    word_result = store["words"][key]
+                    _touch_english_log(store, _today_str(), newWords=1)
+                save_data(data)
+                self._json(word_result, 201)
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "单词格式不正确"}, 400)
+            return
+        if path == "/api/english/words/import":
+            try:
+                payload = self._body()
+                raw = payload.get("words") if isinstance(payload.get("words"), list) else []
+                names, seen = [], set()
+                for item in raw[:60]:
+                    name = str(item).strip()[:40]
+                    key = name.lower()
+                    if name and re.fullmatch(r"[a-zA-Z'\- ]{1,40}", name) and key not in seen:
+                        seen.add(key)
+                        names.append(name)
+                names = names[:30]
+                if not names:
+                    self._json({"error": "请提供要导入的单词（每行一个）"}, 400)
+                    return
+                entries = None
+                config = load_config()
+                api_key = config.get("deepseek_api_key") or os.environ.get("DEEPSEEK_API_KEY")
+                if api_key:
+                    try:
+                        api_url = config.get("deepseek_api_url") or DEFAULT_DEEPSEEK_URL
+                        model = config.get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL
+                        system = ("你是英语词典助手。为下列单词逐个提供信息，必须严格返回 JSON："
+                                  "{\"words\":[{\"word\",\"phonetic\"（音标）,\"meaning\"（中文释义）,\"example\"（英文例句）,\"exampleTranslation\"（例句中文翻译）}]}。"
+                                  "只处理给定的词，不要编造不存在的词。")
+                        body = json.dumps({"model": model, "temperature": 0.3, "response_format": {"type": "json_object"},
+                                           "messages": [{"role": "system", "content": system},
+                                                        {"role": "user", "content": "、".join(names)}]}).encode("utf-8")
+                        req = urllib.request.Request(api_url, data=body, headers={
+                            "Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}, method="POST")
+                        with urllib.request.urlopen(req, timeout=90) as response:
+                            result = json.loads(response.read().decode("utf-8"))
+                        parsed = _parse_ai_json(result["choices"][0]["message"]["content"])
+                        cand = [_clean_word_entry(w) for w in (parsed or {}).get("words", [])] if isinstance(parsed, dict) else []
+                        cand = [w for w in cand if w]
+                        got = {str(w.get("word") or "").lower() for w in cand}
+                        if len([n for n in names if n.lower() in got]) >= max(1, int(len(names) * 0.6)):
+                            entries = {str(w["word"]).lower(): w for w in cand}
+                    except Exception:  # noqa: BLE001 - AI 失败时回退本地导入
+                        entries = None
+                if entries is None:
+                    entries = {}
+                data = read_data()
+                store = _english_store(data)
+                saved, now_iso = [], datetime.now().isoformat(timespec="seconds")
+                for name in names:
+                    key = name.lower()
+                    if key in store["words"]:
+                        continue
+                    base = dict(entries.get(key) or {"word": name})
+                    base["word"] = name
+                    store["words"][key] = {**base, "addedAt": now_iso, "reviewCount": 0, "correctCount": 0,
+                                           "wrongCount": 0, "lastReviewAt": "", "status": "learning", "stage": 0, "nextReviewAt": ""}
+                    saved.append(store["words"][key])
+                _touch_english_log(store, _today_str(), newWords=len(saved))
+                save_data(data)
+                self._json({"imported": len(saved), "skipped": len(names) - len(saved), "entries": saved}, 201)
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "导入失败"}, 400)
+            return
+        if path == "/api/english/weekly-report":
+            try:
+                data = read_data()
+                store = _english_store(data)
+                stats = _english_weekly_stats(store)
+                report = None
+                config = load_config()
+                api_key = config.get("deepseek_api_key") or os.environ.get("DEEPSEEK_API_KEY")
+                if api_key:
+                    try:
+                        report = _english_weekly_report_ai(stats, api_key, config)
+                    except Exception:  # noqa: BLE001 - AI 失败时回退本地模板
+                        report = None
+                if report is None:
+                    report = _english_weekly_report_local(stats)
+                anchor = stats["weekStart"]
+                report.update(stats)
+                report["generatedAt"] = datetime.now().isoformat(timespec="seconds")
+                store["weeklyReports"][anchor] = report
+                del_keys = sorted(store["weeklyReports"].keys())[:-8]
+                for old in del_keys:
+                    del store["weeklyReports"][old]
+                save_data(data)
+                self._json(report)
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "周报生成失败"}, 400)
+            return
+        if path == "/api/english/plan/complete":
+            try:
+                payload = self._body()
+                date = str(payload.get("date") or _today_str()).strip()
+                data = read_data()
+                store = _english_store(data)
+                plan = store["plans"].get(date)
+                if not isinstance(plan, dict):
+                    self._json({"error": "该日期还没有英语任务，请先生成"}, 404)
+                    return
+                completed = bool(payload.get("completed"))
+                plan["completed"] = completed
+                if completed:
+                    plan["completedAt"] = datetime.now().isoformat(timespec="seconds")
+                else:
+                    plan.pop("completedAt", None)
+                log = _touch_english_log(store, date, planCompleted=1 if completed else -1)
+                log["planCompleted"] = max(0, int(log.get("planCompleted") or 0))
+                save_data(data)
+                self._json({"date": date, "completed": completed})
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "操作失败"}, 400)
+            return
+        if path == "/api/english/sentence-favs":
+            try:
+                payload = self._body()
+                text = _clean_text(payload.get("text"), 300)
+                if not text:
+                    self._json({"error": "句子不能为空"}, 400)
+                    return
+                data = read_data()
+                store = _english_store(data)
+                key = hashlib.md5(text.strip().lower().encode("utf-8")).hexdigest()[:12]
+                if key in store["favorites"]:
+                    del store["favorites"][key]
+                    save_data(data)
+                    self._json({"saved": False})
+                    return
+                store["favorites"][key] = {"key": key, "text": text,
+                                           "translation": _clean_text(payload.get("translation"), 300),
+                                           "points": [str(p)[:120] for p in (payload.get("points") or []) if str(p).strip()][:3],
+                                           "date": str(payload.get("date") or _today_str())[:10],
+                                           "level": str(payload.get("level") or "")[:10],
+                                           "addedAt": datetime.now().isoformat(timespec="seconds")}
+                save_data(data)
+                self._json({"saved": True, "favorite": store["favorites"][key]}, 201)
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "收藏失败"}, 400)
+            return
+        if path == "/api/english/speaking":
+            try:
+                payload = self._body()
+                message = _clean_text(payload.get("message"), 800)
+                if not message:
+                    self._json({"error": "请输入要说的话"}, 400)
+                    return
+                topic = _clean_text(payload.get("topic"), 100) or "Free talk"
+                config = load_config()
+                api_key = config.get("deepseek_api_key") or os.environ.get("DEEPSEEK_API_KEY")
+                reply = None
+                if api_key:
+                    try:
+                        reply = _english_speak(payload, api_key, config)
+                    except Exception:  # noqa: BLE001 - AI 失败时回退本地回复
+                        reply = None
+                if reply is None:
+                    reply = _english_speak_local(message)
+                data = read_data()
+                store = _english_store(data)
+                session_id = str(payload.get("sessionId") or "").strip()
+                session = next((item for item in store["sessions"] if item.get("id") == session_id), None)
+                if session is None:
+                    session_id = uuid.uuid4().hex
+                    session = {"id": session_id, "date": _today_str(), "topic": topic, "createdAt": datetime.now().isoformat(timespec="seconds"), "messages": []}
+                    store["sessions"].insert(0, session)
+                del store["sessions"][20:]
+                session["topic"] = topic
+                session.setdefault("messages", []).append({"role": "user", "content": message, "at": datetime.now().isoformat(timespec="seconds")})
+                session["messages"].append({"role": "coach", "content": reply["reply"], "corrections": reply.get("corrections", []), "at": datetime.now().isoformat(timespec="seconds")})
+                del session["messages"][:-200]
+                _touch_english_log(store, _today_str(), speakingMessages=2)
+                save_data(data)
+                self._json({"id": session_id, **reply})
+            except (json.JSONDecodeError, ValueError, TypeError) as error:
+                self._json({"error": str(error) or "口语练习请求失败"}, 400)
+            return
         if path != "/api/tasks":
             self._json({"error": "Not found"}, 404)
             return
@@ -755,6 +1369,8 @@ class AppHandler(SimpleHTTPRequestHandler):
         self._json(task, 201)
 
     def do_PUT(self):
+        if not self._check_auth():
+            return
         path = urlparse(self.path).path
         if path.startswith("/api/goals/"):
             goal_id = path.rsplit("/", 1)[-1]
@@ -820,6 +1436,19 @@ class AppHandler(SimpleHTTPRequestHandler):
             save_data(data)
             self._json({"date": date, **record})
             return
+        if path.startswith("/api/english/wrong-words/"):
+            word_key = unquote(path.rsplit("/", 1)[-1]).lower()
+            data = read_data()
+            store = _english_store(data)
+            entry = store["wrongWords"].get(word_key)
+            if not entry:
+                self._json({"error": "错词不存在"}, 404)
+                return
+            payload = self._body()
+            entry["mastered"] = bool(payload.get("mastered"))
+            save_data(data)
+            self._json(entry)
+            return
         if not path.startswith("/api/tasks/"):
             self._json({"error": "Not found"}, 404)
             return
@@ -858,7 +1487,32 @@ class AppHandler(SimpleHTTPRequestHandler):
         self._json(task)
 
     def do_DELETE(self):
+        if not self._check_auth():
+            return
         path = urlparse(self.path).path
+        if path.startswith("/api/english/sentence-favs/"):
+            fav_key = unquote(path.rsplit("/", 1)[-1])
+            data = read_data()
+            store = _english_store(data)
+            if fav_key not in store["favorites"]:
+                self._json({"error": "收藏不存在"}, 404)
+                return
+            del store["favorites"][fav_key]
+            save_data(data)
+            self._json({"ok": True})
+            return
+        if path.startswith("/api/english/words/"):
+            word_key = unquote(path.rsplit("/", 1)[-1]).lower()
+            data = read_data()
+            store = _english_store(data)
+            removed_word = store["words"].pop(word_key, None) is not None
+            removed_wrong = store["wrongWords"].pop(word_key, None) is not None
+            if not (removed_word or removed_wrong):
+                self._json({"error": "单词不存在"}, 404)
+                return
+            save_data(data)
+            self._json({"ok": True})
+            return
         if path.startswith("/api/goals/"):
             goal_id = path.rsplit("/", 1)[-1]
             data = read_data()

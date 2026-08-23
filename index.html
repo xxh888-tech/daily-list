@@ -30,6 +30,7 @@
         <button class="nav-item" data-view="all"><span class="nav-icon">▤</span>全部任务</button>
         <button class="nav-item" data-view="stats"><span class="nav-icon">◒</span>学习数据统计</button>
         <button class="nav-item" data-view="goals"><span class="nav-icon">◎</span>目标管理</button>
+        <button class="nav-item" data-view="english"><span class="nav-icon">✎</span>AI英语教练 <b id="engNavCount">0</b></button>
       </nav>
       <div class="side-section">
         <div class="side-heading"><span>分类</span><button class="icon-button" id="addCategoryBtn" title="添加分类">＋</button></div>
@@ -112,6 +113,73 @@
         <section class="chart-card weight-trend-card hidden" id="weightTrendCard" aria-label="体重趋势"><div class="chart-header"><div><h3>体重趋势</h3><p id="weightTrendSub">最近的体重变化</p></div><span class="chart-legend"><i></i>kg · <b id="weightTrendTargetLabel"></b></span></div><div id="weightTrendChart"></div></section>
         <div class="goals-list" id="goalsList"></div>
         <div class="goals-empty hidden" id="goalsEmpty"><div class="empty-illustration">◎</div><h3>还没有目标</h3><p>创建一个目标，让每天的任务都有清晰的方向。</p><button class="secondary-button" id="emptyGoalBtn">＋ 创建第一个目标</button></div>
+      </section>
+
+      <section class="english-dashboard hidden" id="englishDashboard" aria-label="AI英语教练">
+        <div class="english-heading">
+          <div><span class="eyebrow">AI ENGLISH COACH</span><h2>AI英语教练</h2><p>每日任务自动生成、错词追踪、口语陪练，让英语学习有闭环。</p></div>
+        </div>
+        <div class="eng-tabs"><button class="eng-tab active" data-eng-tab="plan">今日任务</button><button class="eng-tab" data-eng-tab="words">单词本 <span id="engWordTotal">0</span></button><button class="eng-tab" data-eng-tab="wrong">错词本 <span id="engWrongTotal">0</span></button><button class="eng-tab" data-eng-tab="speaking">AI口语练习</button><button class="eng-tab" data-eng-tab="favs">句子收藏 <span id="engFavTotal">0</span></button><button class="eng-tab" data-eng-tab="stats">学习统计</button></div>
+
+        <div class="eng-panel" id="engPanelPlan">
+          <div class="eng-due-bar hidden" id="engDueBar"></div>
+          <section class="chart-card eng-plan-controls">
+            <div class="eng-plan-form">
+              <label class="form-field"><span>目标水平</span><select id="engLevel"><option value="cet4">大学英语四级</option><option value="cet6">大学英语六级</option><option value="kaoyan">考研英语</option><option value="ielts">雅思</option><option value="daily">日常英语</option></select></label>
+              <label class="form-field eng-focus-field"><span>今日重点 <small>可选</small></span><input id="engFocus" maxlength="60" placeholder="例如：阅读长难句 / 旅行场景词汇" /></label>
+              <button class="primary-button" id="engGenerateBtn"><span>✦</span> AI生成今日任务</button>
+            </div>
+            <div class="eng-tts-row">
+              <label class="form-field"><span>朗读语速</span><select id="engRate"><option value="0.75">慢速 🐢</option><option value="0.92" selected>正常</option><option value="1.1">快速 ⚡</option></select></label>
+              <label class="form-field"><span>口音</span><select id="engAccent"><option value="en-US" selected>美音</option><option value="en-GB">英音</option></select></label>
+            </div>
+            <p class="eng-plan-tip hidden" id="engPlanTip"></p>
+          </section>
+          <div id="engPlanContent"></div>
+        </div>
+
+        <div class="eng-panel hidden" id="engPanelWords">
+          <div class="toolbar eng-word-toolbar"><label class="search-box"><span>⌕</span><input id="engWordSearch" type="search" placeholder="搜索单词或释义..." /></label><button class="secondary-button" id="engImportBtn">⬆ 批量导入</button><button class="secondary-button" id="engExportBtn">⬇ 导出CSV</button><button class="secondary-button" id="engAddWordBtn">＋ 手动添加</button></div>
+          <div class="eng-word-list" id="engWordList"></div>
+          <p class="eng-empty hidden" id="engWordsEmpty">词库还是空的，去“今日任务”生成一份学习计划吧。</p>
+        </div>
+
+        <div class="eng-panel hidden" id="engPanelWrong">
+          <div class="toolbar eng-word-toolbar"><button class="primary-button" id="engQuizBtn"><span>📝</span> 错词测验</button><button class="primary-button" id="engSpellBtn"><span>🔊</span> 听音拼写</button><button class="secondary-button hidden" id="engQuizExit">退出测验</button></div>
+          <div class="eng-wrong-list" id="engWrongList"></div>
+          <p class="eng-empty hidden" id="engWrongEmpty">太棒了，错词本是空的！答错的单词会自动收进这里。</p>
+        </div>
+
+        <div class="eng-panel hidden" id="engPanelSpeaking">
+          <section class="chart-card eng-speak-card">
+            <div class="eng-speak-head">
+              <label class="form-field eng-topic-field"><span>话题</span><input id="engTopic" maxlength="80" placeholder="想练什么话题？例如：job interview / ordering coffee" /></label>
+              <button class="secondary-button" id="engMicBtn" type="button" title="语音输入（需要浏览器支持）">🎙 说话</button>
+            </div>
+            <div class="eng-chat" id="engChat"></div>
+            <p class="eng-mic-hint hidden" id="engMicHint"></p>
+            <div class="eng-chat-input-row">
+              <input id="engChatInput" maxlength="500" placeholder="用英语输入，或点击 🎙 说话..." />
+              <button class="primary-button" id="engSendBtn">发送</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="eng-panel hidden" id="engPanelFavs">
+          <div class="eng-wrong-list" id="engFavList"></div>
+          <p class="eng-empty hidden" id="engFavEmpty">还没有收藏的句子。在“今日任务”里遇到好句子，点 ♡ 收藏吧。</p>
+        </div>
+
+        <div class="eng-panel hidden" id="engPanelStats">
+          <article class="chart-card eng-weekly-card"><div class="chart-header"><div><h3>英语周报</h3><p>最近 7 天学习数据 + AI 点评</p></div><button class="secondary-button" id="engWeeklyBtn">✦ 生成本周周报</button></div><div id="engWeeklyBox" class="eng-weekly-box"></div></article>
+          <div class="stats-cards">
+            <article class="stats-card stats-card-primary"><span class="stats-card-label">词库总单词</span><strong id="engStatTotal">0</strong><small id="engStatLearnDetail">学习中 0 · 已掌握 0</small><div class="mini-progress"><i id="engStatBar"></i></div></article>
+            <article class="stats-card"><span class="stats-card-label">连续打卡天数</span><strong id="engStatStreak">0 <b>天</b></strong><small>复习、口语或完成任务即算打卡</small><span class="stats-card-icon streak-icon">✦</span></article>
+            <article class="stats-card"><span class="stats-card-label">待消灭错词</span><strong id="engStatWrong">0</strong><small id="engStatWrongDetail">累计答错 0 次</small><span class="stats-card-icon">✗</span></article>
+            <article class="stats-card"><span class="stats-card-label">本周口语消息</span><strong id="engStatSpeaking">0 条</strong><small id="engStatSpeakingDetail">还没有开口练习</small><span class="stats-card-icon">💬</span></article>
+          </div>
+          <article class="chart-card eng-trend-card"><div class="chart-header"><div><h3>近7天学习活动</h3><p>新学、复习与口语消息统计</p></div></div><div id="engTrendChart" class="eng-trend-chart"></div></article>
+        </div>
       </section>
 
       <section class="daily-record" aria-label="每日生活记录">

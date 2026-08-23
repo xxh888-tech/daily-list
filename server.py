@@ -705,10 +705,13 @@ def _local_english_plan(payload):
         _take(pool.pop(index % len(pool)))
         index += 3
     sentence = dict(ENGLISH_FALLBACK_SENTENCES[seed % len(ENGLISH_FALLBACK_SENTENCES)])
+    story_examples = [w["example"] for w in words if w.get("example")][:4]
+    story = {"text": " ".join(story_examples), "translation": ""} if len(story_examples) >= 2 else {}
     return {
         "level": level,
         "words": words,
         "sentence": sentence,
+        "story": story,
         "speaking": {"topic": "Talk about your plan for this weekend", "scene": "和朋友闲聊", "starter": "I'm thinking about..."},
         "tip": "先读一遍单词和例句，再遮住中文自测；不确定的单词点“不认识”加入错词本。",
         "source": "local",
@@ -740,6 +743,7 @@ def _english_plan_ai(payload, api_key, config):
         + "必须严格返回 JSON，不要 Markdown，字段为："
           "words（恰好6个单词的对象数组，每项含 word、phonetic（音标）、meaning（中文释义）、example（英文例句）、exampleTranslation（例句中文翻译）），"
           "sentence（对象，含 text（地道英文句子）、translation（中文翻译）、points（1-3条语法/搭配要点的字符串数组）），"
+          "story（对象，把本次的全部单词自然编进一篇80-120词的简单英文小故事，难度符合目标水平，含 text（英文故事）和 translation（中文翻译）），"
           "speaking（对象，含 topic（口语话题，英文）、scene（场景说明，中文）、starter（开场句，英文）），"
           "tip（一条简短的中文学习方法建议）。"
           "单词不要编造不存在的词，例句要贴近生活、难度符合目标水平。"
@@ -761,10 +765,13 @@ def _english_plan_ai(payload, api_key, config):
     sentence_raw = plan.get("sentence") if isinstance(plan.get("sentence"), dict) else {}
     speaking_raw = plan.get("speaking") if isinstance(plan.get("speaking"), dict) else {}
     points = [str(p)[:120] for p in (sentence_raw.get("points") or [])][:3]
+    story_raw = plan.get("story") if isinstance(plan.get("story"), dict) else {}
+    story_text = _clean_text(story_raw.get("text"), 1000)
     return {
         "level": payload.get("level") if payload.get("level") in ENGLISH_LEVELS else "cet4",
         "words": words,
         "sentence": {"text": _clean_text(sentence_raw.get("text"), 300), "translation": _clean_text(sentence_raw.get("translation"), 300), "points": points},
+        "story": {"text": story_text, "translation": _clean_text(story_raw.get("translation"), 500)} if story_text else {},
         "speaking": {"topic": _clean_text(speaking_raw.get("topic"), 200) or "Free talk", "scene": _clean_text(speaking_raw.get("scene"), 100), "starter": _clean_text(speaking_raw.get("starter"), 200)},
         "tip": _clean_text(plan.get("tip"), 300),
         "source": "ai",

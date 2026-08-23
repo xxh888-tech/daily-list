@@ -863,10 +863,15 @@ function renderEngPlan() {
   content.innerHTML = `
     <section class="chart-card eng-plan-meta"><div><h3>今日任务单 · ${engLevelLabel(plan.level)}</h3><p>6个核心单词 · 1个长难句 · 1个口语话题</p></div><div class="eng-plan-meta-side"><span class="generated-source">${plan.source === 'ai' ? 'DeepSeek AI 生成' : '本地词库生成'}</span>${completeControl}</div></section>
     <div class="eng-word-grid">${wordsHtml}</div>
-    <section class="chart-card eng-sentence-card"><div class="chart-header"><div><span class="eyebrow">DAILY SENTENCE</span><h3>每日一句</h3></div><div class="eng-plan-meta-side"><button class="icon-button eng-fav-btn ${sentenceFaved ? 'active' : ''}" data-fav="${escapeHtml(sentence.text || '')}" title="${sentenceFaved ? '取消收藏' : '收藏句子'}">${sentenceFaved ? '❤' : '♡'}</button><button class="icon-button eng-speak-btn" data-say="${escapeHtml(sentence.text || '')}" title="朗读句子">🔊</button></div></div>
+    <section class="chart-card eng-sentence-card"><div class="chart-header"><div><span class="eyebrow">DAILY SENTENCE</span><h3>每日一句</h3></div><div class="eng-plan-meta-side"><button class="icon-button" id="engReadBtn" title="跟读这句，测测发音">🎙 跟读</button><button class="icon-button eng-fav-btn ${sentenceFaved ? 'active' : ''}" data-fav="${escapeHtml(sentence.text || '')}" title="${sentenceFaved ? '取消收藏' : '收藏句子'}">${sentenceFaved ? '❤' : '♡'}</button><button class="icon-button eng-speak-btn" data-say="${escapeHtml(sentence.text || '')}" title="朗读句子">🔊</button></div></div>
       <blockquote class="eng-sentence">${escapeHtml(sentence.text || '')}</blockquote>
       <p class="eng-example-cn">${escapeHtml(sentence.translation || '')}</p>
-      ${(sentence.points || []).length ? `<ul class="eng-points">${sentence.points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}</section>
+      ${(sentence.points || []).length ? `<ul class="eng-points">${sentence.points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}
+      <div id="engReadResult" class="eng-read-result"></div></section>
+    ${(plan.story && plan.story.text) ? `<section class="chart-card eng-story-card"><div class="chart-header"><div><span class="eyebrow">WORD STORY</span><h3>今日单词小故事</h3></div><button class="icon-button eng-speak-btn" data-say="${escapeHtml(plan.story.text)}" title="朗读故事">🔊</button></div>
+      <blockquote class="eng-story">${escapeHtml(plan.story.text)}</blockquote>
+      ${plan.story.translation ? `<p class="eng-example-cn">${escapeHtml(plan.story.translation)}</p>` : ''}
+      <p class="eng-scene">把今天的单词都藏进去了，读完故事等于复习一遍 📖</p></section>` : ''}
     <section class="chart-card eng-topic-card"><div class="chart-header"><div><span class="eyebrow">SPEAKING PRACTICE</span><h3>今日口语话题</h3><p class="eng-scene">${escapeHtml(speaking.scene || '')}</p></div></div>
       <p class="eng-sentence">${escapeHtml(speaking.topic || '')}</p>
       ${speaking.starter ? `<p class="eng-example">开场参考：${escapeHtml(speaking.starter)}</p>` : ''}
@@ -876,6 +881,49 @@ function renderEngPlan() {
   $('engGoSpeakingBtn').onclick = () => { $('engTopic').value = (engStore().plans[state.selectedDate]?.speaking?.topic) || ''; state.engTab = 'speaking'; renderEnglish(); };
   const completeBtn = $('engCompleteBtn');
   if (completeBtn) completeBtn.onclick = engTogglePlanComplete;
+  const readBtn = $('engReadBtn');
+  if (readBtn) readBtn.onclick = () => engStartReading(sentence.text || '');
+}
+
+let engReadRecognition = null;
+function engNormalizeWords(t) { return String(t || '').toLowerCase().replace(/[^a-z\s']/g, ' ').split(/\s+/).filter(Boolean); }
+function engScoreReading(target, said) {
+  const t = engNormalizeWords(target), s = engNormalizeWords(said);
+  if (!t.length) return;
+  const m = t.length, n = s.length;
+  const dp = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    dp[i][j] = t[i-1] === s[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+  let score = Math.round(dp[m][n] / m * 100);
+  const matched = dp[m][n];
+  const missing = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (t[i-1] === s[j-1]) { j--; i--; }
+    else if (dp[i-1][j] >= dp[i][j-1]) { missing.unshift(t[i-1]); i--; }
+    else j--;
+  }
+  while (i > 0) { missing.unshift(t[i-1]); i--; }
+  const box = $('engReadResult');
+  if (!box) return;
+  box.innerHTML = score === 100 ? `🎯 得分 <b>100%</b> · 完美复述！🎉`
+    : `🎯 得分 <b>${score}%</b> · 你说的是：“${escapeHtml(said)}”${missing.length ? `<br>漏读/不准：${missing.slice(0, 6).map(w => `<b>${escapeHtml(w)}</b>`).join('、')}${missing.length > 6 ? ' 等' : ''} · 点🔊再听一遍` : ''}`;
+}
+function engStartReading(text) {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { toast('当前浏览器不支持语音识别'); return; }
+  if (!text) return;
+  if (engReadRecognition) { engReadRecognition.stop(); engReadRecognition = null; return; }
+  const rec = new Recognition();
+  engReadRecognition = rec;
+  rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1;
+  const btn = $('engReadBtn'), box = $('engReadResult');
+  btn.textContent = '🎙 聆听中…';
+  if (box) box.innerHTML = '<p class="eng-scene">请大声读出上面的句子…</p>';
+  rec.onresult = e => engScoreReading(text, e.results[0][0].transcript);
+  rec.onerror = () => { toast('没有听清，靠近点再试一次'); if (box) box.innerHTML = ''; };
+  rec.onend = () => { engReadRecognition = null; const b = $('engReadBtn'); if (b) b.textContent = '🎙 跟读'; };
+  try { rec.start(); } catch (error) { engReadRecognition = null; }
 }
 
 async function engTogglePlanComplete() {

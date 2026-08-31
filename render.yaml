@@ -8,5 +8,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      # 在 Render 控制台的 Environment 页面手动添加：
-      # DEEPSEEK_API_KEY = 你的 DeepSeek Key（用于 AI 复盘功能）
+      - key: DEEPSEEK_API_KEY
+        value: sk-ca3ce5e17a664f0087f05612782ab4c0
